@@ -58,4 +58,96 @@
 
 ## 数据传输相关命令
 
+| 命令 | 说明 |
+| ---- | ---- |
+|git fetch-pack|执行fetch或pull命令时在本地执行此命令，用于从其他版本库获取缺失的对象|
+|git receive-pack|执行push命令在远程执行的命令，用于接收推送的数据|
+|git send-pack|执行push命令时在本地执行的命令，用于向其他版本库推送数据|
+|git upload-archive|执行git archive --remote命令基于远程版本库创建归档时，远程版本库执行此命令传送归档|
+|git upload-pack|执行fetch或pull命令时在远程执行此命令，将对象打包、上传|
+
+## 邮件相关命令
+
+| 命令 | 说明 | 命令 | 说明 |
+| ---- | ---- | ---- | ---- |
+|git imap-send|将补丁通过IMAP发送|git mailinfo|从邮件导出提交说明和补丁|
+|git mailsplit|将mbox或Maildir格式邮箱中邮件逐一提取为文件|git request-pull|创建包含提交间差异和执行PULL操作地址的信息|
+|git send-email|发送邮件|||
+
+## 协议相关命令
+
+| 命令 | 说明 |
+| ---- | ---- |
+|git daemon|实现Git协议|
+|git http-backend|实现HTTP协议的CGI程序，支持智能HTTP协议|
+|git instaweb|即时启动浏览器通过gitweb浏览当前版本库|
+|git shell|受限制的shell，提供仅执行Git命令的SSH访问|
+|git update-server-info|更新哑协议需要的辅助文件|
+|git http-fetch|通过HTTP协议获取版本库|
+|git http-push|通过HTTP/DAV协议推送|
+|git remote-ext|由Git命令调用，通过外部命令提供扩展协议支持|
+|git remote-fd|由Git命令调用，使用文件描述符作为协议接口|
+|git remote-ftp|由Git命令调用，提供对FTP协议的支持|
+|git remote-ftps|由Git命令调用，提供对FTPS协议的支持|
+|git remote-http|由Git命令调用，提供对HTTP协议的支持|
+|git remote-https|由Git命令调用，提供对HTTPS协议的支持|
+|git remote-testgit|协议扩展示例脚本|
+
+## 版本库转换和交互相关命令
+
+| 命令 | 说明 |
+| ---- | ---- |
+|git archimport|导入Arch版本库到Git|
+|git bundle|提交打包和解包，以便在不同版本库间传递|
+|git cvsexportcommit|将Git的一个提交作为一个CVS检出|
+|git cvsimport|导入CVS版本库到Git。或者使用cvs2git|
+|git cvsserver|Git的CVS协议模拟器，可供CVS命令访问Git版本库|
+|git fast-export|将提交到处为git-fast-import格式|
+|git fast-import|其他版本库迁移至Git的通用工具|
+|git svn|Git作为前端操作Subversion|
+
+## 合并相关的辅助命令
+
+| 命令 | 说明 |
+| ---- | ---- |
+|git merge-base|供其他脚本调用，找到两个或多个提交最近的公共祖先|
+|git merge-file|针对文件的两个不同版本执行三向文件合并|
+|git merge-index|对index中的冲突文件调用指定的冲突解决工具|
+|git merge-octopus|合并两个以上的分支。参见git merge的octopus合并策略|
+|git merge-one-file|由git merge-index调用的标准辅助程序|
+|git merge-ours|合并使用本地版本，抛弃他人版本。参见git merge的ours策略|
+|git merge-recursive|针对两个分支的三向合并。参见git merge的recursive策略|
+|git merge-resolve|针对两个分支的三向合并。参见git merge的resolve策略|
+|git merge-tree|显示三向合并结果，不改变暂存区|
+|git fmt-merge-msg|供执行合并操作的脚本调用，用于创建一个合并提交说明|
+|git rerere|重用所记录的冲突解决方案|
+
+## 杂项
+
+| 命令 | 说明 |
+| ---- | ---- |
+|git bisect --helper|由git biset命令调用，确认二分查找进度|
+|git check-attr|显示某个文件是否设置了某个属性|
+|git checkout-index|从暂存区拷贝文件至工作区|
+|git cherry|查找没有合并到上游的提交|
+|git diff-files|比较暂存区和工作区，相当于git diff --raw|
+|git diff-index|比较暂存区和版本库区，相当于git diff --cached --raw|
+|git diff-tree|比较两个树对象，相当于git diff --raw A B|
+|git difftool --helper|由git difftool命令调用，默认要使用的差异比较工具|
+|git get-tar-commit-id|从git archive创建的tar包中提取提交ID|
+|git gui --askpass|命令git gui的获取用户口令输入界面|
+|git notes|提交评论管理|
+|git patch-id|补丁过滤行号和空白字符后生成补丁唯一ID|
+|git quiltimport|将Quilt补丁列表应用到当前分支|
+|git replace|提交替换|
+|git shortlog|对git log的汇总输出，适合于产品发布说明|
+|git stripspace|删除空行，供其他脚本调用|
+|git submodule|子模组管理|
+|git tar-tree|过时命令，请使用git archive|
+|git var|显示Git环境变量|
+|git web --browse|启动浏览器以查看目录或文件|
+|git whatchanged|显示提交历史及每次提交的改动|
+|git-mergetool --lib|包含于其他脚本中，提供合并/差异比较工具的选择和执行|
+|git-parse-remote|包含于其他脚本中，提供操作远程版本库的函数|
+|git-sh-setup|包含于其他脚本中，提供shell编程的函数库|
 
