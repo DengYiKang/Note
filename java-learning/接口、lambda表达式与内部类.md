@@ -426,3 +426,214 @@ Person[] people=stream.toArray(Person[]::new);
 + 只有在必要时才运行代码
 
 常用的函数接口如下：
+
+| 函数式接口 | 参数类型 | 返回类型 | 抽象方法名 | 描述 | 其他方法 |
+| ---------- | -------- | -------- | ---------- | ---- | -------- |
+|Runnable|无|void|run|作为无参数或返回值的动作运行||
+|Supplier<T>|无|T|get|提供一个T类型的值||
+|Consumer<T>|T|void|accept|处理一个T类型的值|andThen|
+|BiConsumer<T, U>|T, U|void|accept|处理一个T和U类型的值|andThen|
+|Function<T, R>|T|R|apply|有一个T类型参数的函数|compose,andThen, identity|
+|BiFunction<T, U, R>|T, U|R|apply|有T和U类型参数的函数|andThen|
+|UnaryOperator<T>|T|T|apply|类型T上的一元操作符|compose, andThen, dentity|
+|BinaryOperator<T>|T, T|T|apply|类型T上的二元操作符|andThen, maxBy, minBy|
+|Predicate<T>|T|boolean|test|布尔值函数|and, or, negate, isEqual|
+|BiPredicate<T, U>|T, U|boolean|test|有两个参数的布尔值函数|and, or, negate|
+
+如果想要重复一个动作n次，则可以选择Runnable接口：
+
+```java
+public static void repeat(int n, Runnable action){
+    for(int i=0; i<n; i++) action.run();
+}
+repeat(100, ()->System.out.println(...));
+```
+
+如果希望告诉这个动作出现在哪一次迭代中，则需要构造合适的接口：
+
+```java
+public interface IntConsumer{
+    void accept(int value);
+}
+public static void repeat(int n, IntConsumer action){
+    for(int i=0; i<n; i++) action.accept(i);
+}
+repeat(100, i->System.out.println(i));
+```
+
+以下列出了基本类型的规范，最好使用这些特殊化规范来减少自动装箱。出于这个原因，上面我们用的是IntConsumer而不是Consumer<Integer>。
+
+| 函数式接口 | 参数类型 | 返回类型 | 抽象方法名 |
+| ---------- | -------- | -------- | ---------- |
+|BooleanSupplier|none|boolean|getAsBoolean|
+|PSupplier|none|p|getAsP|
+|PConsumer|p|void|accept|
+|ObjPComsumer<T>|T, p|void|accept|
+|PFunction<T>|p|T|apply|
+|PToQFunction<T>|p|q|applyAsQ|
+|ToPFunction<T>|T|p|applyAsP|
+|ToPBiFunction<T, U>|T, U|p|applyAsP|
+|PUnaryOperator|p|p|applyAsP|
+|PBinaryOperator|p, p|p|appluAsP|
+|PPredicate|p|boolean|test|
+
+==注==：p, q为int, long, double; P, Q为Int, Long, Double。
+
+==注==：大多数标准函数式接口都提供了非抽象方法来生成或合并函数。如，Predicate.isEqual(a)等同于a::equals。已经提供了默认方法and、or或negate来合并谓词。如，Predicate.isEqual(a).or(Predicate.isEqual(b))就等同于  x->a.equals(x) || b.equals(x)。
+
+==注==：如果设计接口，其中只有一个抽象方法，可以用@FunctionalInterface注解来标记接口。有两个优点：若无意中增加了另一个非抽象方法，编译器会产生一个错误信息。另外javadoc页里会指出你的接口是一个函数式接口。
+
+### 再谈Comparator
+
+Comparator接口包含很多方便的静态方法来创建比较器。这些方法可以用于lambda表达式或方法引用。
+
+静态comparing方法取一个“键提取器”函数，它将类型T映射为一个可比较的类型（如String）。对要比较的对象应用这个函数，然后对返回的键完成比较。如，假设有一个Person对象数组，可如下按名字对这些对象排序：
+
+```java
+Arrays.sort(people, Comparator.comparing(Person::getName));
+```
+
+可以把比较器与thenComparing方法串起来：
+
+```java
+Arrays.sort(people, 
+          Comparator.comparing(Person::getLastName).thenComparing(Person::getFirstName));
+```
+
+这些方法有很多变体形式。可以为comparing和thenComparing方法提取的键指定一个比较器。如，可以如下根据人名长度完成排序：
+
+```java
+Arrays.sort(people, Comparator.comparing(Person::getName,
+                                         (s,t)->Integer.compare(s.length, t.lenght())));
+```
+
+另外还有变体形式避免装箱：
+
+```java
+Arrays.sort(people, Comparator.comparingInt(p->p.getName().length()));
+```
+
+如果键函数可以返回null，可能就要用到nullsFirst和nullsLast适配器。这些静态方法会修改现有的比较器，从而在遇到null值时不会抛出异常，而是将这个值标记为小于或大于正常值。
+
+```java
+Arrays.sort(people,
+            Comparator.comparing(Person::getMiddleName(),
+                                 Comparator.nullsFirst(naturalOrder())));
+```
+
+静态reverseOrder方法会提供自然顺序的逆序。要让比较器逆序比较，可以使用reversed实例方法。如naturalOrder().reversed()等同于reverseOrder()。
+
+## 内部类
+
+### 使用内部类访问对象状态
+
+==一个外围类含有内部类，这并不意味着每个外围类都有对应的内部类的实例==。
+
+内部类既可以访问自身的数据域，也可以访问创建它的外围类对象的数据域。
+
+### 内部类的特殊语法机制
+
+使用外围类引用的语法：
+
+```java
+//在内部类中对外围类的变量的引用
+OuterClass.this.value
+```
+
+反过来，可以采用下列语法格式更加明确地编写内部对象的构造器：
+
+```java
+outerObject.new InnerClass(construction parameters)
+```
+
+可以通过显示地命名将外围类引用设置为其他的对象。假设TimePrinter是TalkingClock的公有内部类：
+
+```java
+TalkingClock jabberer=new TalkingClock(1000, true);
+TalkingClock.TimePrinter listener=jabberer.new TimePrinter();
+```
+
+需要注意，在外围类的作用域之外，可以这样引用内部类：
+
+```java
+OuterClass.InnerClass
+```
+
+==注==：内部类中声明的所有静态域都必须是final的。
+
+### 局部内部类
+
+```java
+public void start(){
+    class TimePrinter implements ActionListener{
+        public void actionPerformed(ActionEvent event){
+            System.out.println(...);
+            ...;
+        }
+    }
+    ActionListener listener=new TimePrinter();
+    Timer t=new Timer(interval, listener);
+    t.start();
+}
+```
+
+局部类不能用public或private访问说明符进行声明。它的作用域被限定在声明这个局部类的块中。
+
+局部类有一个优势，即对外部世界完全隐藏。
+
+### 由外部方法访问变量
+
+局部类还有一个优点：它们不仅能够访问包含它们的外部类，还可以访问局部变量。不过那些局部变量必须为final的。
+
+```java
+public void start(int interval, boolean beep){
+    class TimePrinter implements ActionListener{
+        public void actionPerformed(ActionEvent event){
+            if(beep) ...;
+        }
+    }
+    ActionListener listener=new TimePrinter();
+    Timer t=new Timer(interval, listener);
+    t.start();
+}
+```
+
+控制流程如下：
+
++ 调用start方法。
++ 调用TimePrinter构造器，初始化对象变量listener。
++ 将listener引用传递给Timer构造器，定时器开始计时，start方法结束。此时，start方法的beep参数变量不复存在。
++ 然后内部类访问beep...
+
+为了能够让actionPerformed方法工作，TimePrint类在beep域释放之前将beep域用start方法的局部变量进行备份。
+
+有时，final限制显得并不方便。如，假设向更新在一个封闭作用域内的计数器。这里想要统计一下在排序过程中调用compareTo方法的次数：
+
+```java
+int counter=0;
+Date[] dates=new Date[100];
+for(int i=0; i<dates.length; i++){
+    dates[i]=new Date(){
+        public int compareTo(Date other){
+            counter++;//ERROR
+            return super.compareTo(other);
+        }
+    }
+}
+Arrays.sort(dates);
+```
+
+由于清楚地知道counter需要更新，所以不能将counter声明为final。由于Integer对象不可变，所以也不能用Integer替代它。但可以用长度为1的数组：
+
+```java
+int[] counter=new int[1];
+for(int i=0; i<dates.length; i++){
+    dates[i]=new Date(){
+        public int compareTo(Date other){
+            counter[0]++;
+            return super.compareTo(other);
+        }
+    }
+}
+```
+
