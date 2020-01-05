@@ -1,5 +1,7 @@
 # 接口、lambda表达式与内部类
 
+[TOC]
+
 ## 接口
 
 ### 接口概念
@@ -635,5 +637,164 @@ for(int i=0; i<dates.length; i++){
         }
     }
 }
+```
+
+### 匿名内部类
+
+下面的技巧称为“双括号初始化”，这里利用了内部类的语法。假设你想构造一个数组列表，并将它传递到一个方法：
+
+```java
+ArrayList<String> friends=new ArrayList<>();
+friends.add(...);
+invite(friends);
+```
+
+如果不再需要这个数组列表，最好让它作为一个匿名列表。不过作为一个匿名列表，该如何为它添加元素呢？
+
+```java
+invite(new ArrayList<String>(){{add("...");add("...");}})
+```
+
+注意这里的双括号。外层括号建立了ArrayList的一个匿名子类。内层括号则是一个对象构造块。
+
+==注意==：以下语句对匿名子类做测试会失败：
+
+```java
+if(getClass()!=other.getClass()) return false;
+```
+
+==提示==：生成日志或调试信息时，通常希望包含当前类的类名，如：
+
+```java
+System.err.println("Something awful happened in"+getClass());
+```
+
+不过这对于静态方法不奏效。毕竟调用getClass时调用的是this.getClass()，而静态方法没有this。所以应该使用以下表达式：
+
+```java
+/*new Object(){}会建立Object的一个匿名子类的一个匿名对象，getEnclosingClass得到其外围类*/
+new Object(){}.getClass().getEnclosingClass();
+```
+
+### 静态内部类
+
+有时候，使用内部类只是为了把一个类隐藏在另外一个类的内部，并不需要内部类引用外围类对象。为此可以将内部类声明为static，以便取消产生的引用。
+
+```java
+class ArrayAlg{
+    public static class Pair{
+        ...;
+    }
+    public static Pair minmax(double[] values){
+        ...;
+        return new Pair(min, max);
+    }
+}
+```
+
+在大型项目中，除了定义包含一对字符串的Pair类之外，其他程序员也很可能使用这个名字，这样就会产生名字冲突。用静态内部类的方式可以解决该问题：
+
+```java
+ArrayAlg.Pair p=ArrayAlg.minmax(d);
+```
+
+==注释==：在内部类不需要访问外围类对象的时候，应该使用静态内部类。
+
+==注释==：与常规内部类不同，静态内部类可以有静态域和方法。
+
+==注释==：声明在接口中的内部类自动成为static和public类。
+
+## 代理
+
+利用代理可以在运行时创建一个实现了一组给定接口的新类。这种功能只有在编译时无法确定需要实现哪个接口时才有必要使用。
+
+### 创建代理对象
+
+要想创建一个代理对象，需要使用Proxy类的newProxyInstance方法。有三个参数：
+
++ 类加载器：作为Java安全模型的一部分，对于系统类和从因特网上下载下来的类，可以使用不同的类加载器。目前，用null表示使用默认的类加载器。
++ Class对象数组，每个元素都是需要实现的接口。
++ 调用处理器。
+
+使用代理有以下原因：
+
++ 路由对远程服务器的方法调用。
++ 在程序运行期间，将用户接口事件与动作关联起来。
++ 为调试，跟踪方法调用。
+
+在以下程序中，使用代理对象对二分查找进行跟踪：
+
+```java
+public class ProxyTest{
+    public static void main(String[] args){
+        Object[] elements=new Object[1000];
+        //fill elements with proxies for the integers 1 ... 1000
+        for(int i=0; i<elements.length; i++){
+            Integer value=i+1;
+            InvocationHandler handler=new TraceHandler(value);
+            Object proxy=Proxy.newProxyInstance(null, new Class[]{Comparable.class}, handler);
+            elements[i]=proxy;
+        }
+        Integer key=new Random().nextInt(elements.length)+1;
+        int result=Arrays.binarySearch(elements, key);
+        if(result>=0) System.out.println(elements[result]);
+    }
+}
+class TraceHandler{
+    private Object target;
+    public TraceHandler(Object t){
+        target=t;
+    }
+    public Object invoke(Object proxy, Method m, Obejct[] args) throws Throwable{
+        System.out.println(target);
+        System.out.println("."+m.getName()+"(");
+        if(args!=null){
+            for(int i=0; i<args.length; i++){
+                System.out.print(args[i]);
+                if(i<args.length-1) System.out.print(", ");
+            }
+        }
+        System.out.println(")");
+        //invoke actual method
+        return m.invoke(target, args);
+    }
+}
+```
+
+由于数组中填充了代理对象，所以compareTo调用了TraceHandler类中的invoke方法。这个方法打印了方法名和参数，之后用包装好的Integer对象调用compareTo。
+
+输出结果示例：
+
+```java
+500.compareTo(288)
+250.compareTo(288)
+    ...
+288.toString()
+```
+
+==注意==：即使不属于Comparable接口，toString方法也被代理，而且有相当一部分的Object方法都被代理。
+
+### 代理类特性
+
++ 代理类是在程序运行过程中创建的，一旦被创建，就变成了常规类，与虚拟机中的任何其他类没区别。
++ 所有的代理类都扩展与Proxy类。一个代理类只有一个实例域——调用处理器，它定义在Proxy的超类中。
++ 所有的代理类都覆盖了Object类中的方法toString、equals和hashCode。这些方法仅仅调用了调用处理器的invoke。Object类中的其他方法（如clone和getClass）没有被重新定义。
++ 代理类一定是public和final。如果代理类实现的所有接口都是public的，代理类就不属于某个特定的包；否则，所有非公有的接口都必须属于同一个包，同时，代理类也属于这个包。
++ 可以通过调用Proxy类中的isProxyClass方法检测一个特定的class对象是否代表一个代理类。
+
+```java
+java.lang.reflect.invocationHandler 1.3;
+Object invoke(Object proxy, Method method, Object[] args);
+/*定义了代理对象调用方法时希望执行的动作*/
+```
+
+```java
+java.lang.reflect.Proxy 1.3;
+static Class<?> getProxyClass(ClassLoader loader, Class<?>... interfaces);
+/*返回实现指定接口的代理类*/
+static Object newProxyInstance(ClassLoaderloader, Class<?>[] interfaces, InvocationHandler handler);
+/*构造实现指定接口的代理类的一个新实例。所有方法会调用给定处理器对象的invoke方法*/
+static boolean isProxyClass(Class<?> cl);
+/*如果cl是一个代理类则返回true*/
 ```
 
