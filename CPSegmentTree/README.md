@@ -271,7 +271,7 @@ With modification, it's hard to modify the array between answering queries.
 
 In order to deal with it, we can store the array with **multiset** but not **vector**.
 
-It's easy to quickly search for numbers, delete numbers, and insert new numbers. But it increase the time complexity when finding the lower_bound of a segment( you need to sort it first ) .This leads to a construction time of $O(nlog^2n)$ .
+It's easy to quickly search for numbers, delete numbers, and insert new numbers. But it increase the time complexity when finding the lower_bound of a segment( you need to sort it first ) .This leads to a construction time of  $O(nlog^2n)$  .
 
 ```c++
 void update(int v, int tl, int tr, int pos, int new_val){
