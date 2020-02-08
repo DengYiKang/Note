@@ -81,7 +81,7 @@ $$
 A(i_1,i_2,i_3,i_4)=B(i_3,i_4)C(i_1,i_2)
 $$
 
-### Some Basic Facts
+#### Some Basic Facts
 
 $$
 \begin{align}
@@ -94,13 +94,13 @@ $$
 
 Note that $B\otimes C\neq C\otimes B$ .
 
-### A Basic Reshaping Result
+#### A Basic Reshaping Result
 
 $$
 Y=CXB^T\Leftrightarrow vec(Y)=(B\otimes C)vec(X)
 $$
 
-### About the Factors
+#### About the Factors
 
 $$
 \begin{align}
@@ -128,21 +128,19 @@ B=A\times_k M
 $$
 Thus, if $B=A\times_k M$, then $B$ is defined by $B_{(k)}=M\cdot A_{(k)}$.
 
-### Successive Products in the Same Mode
+#### Successive Products in the Same Mode
 
 If $A\in{\R}^{n_1\times ...\times n_d}$ and $M_1,M_2\in{\R}^{m_k\times n_k}$, then
 $$
 (A\times_k M_1)\times_k M_2=A\times_k(M_1M_2)
 $$
 
-### Successive Products in Different Modes
+#### Successive Products in Different Modes
 
 If $A\in{\R}^{n_1\times... \times n_d},M_k\in{\R}^{m_j\times n_j}$, and $k\neq j$ then
 $$
 (A\times_k M_k)\times_j M_j=(A\times_j M_j)\times_k M_k
 $$
-
-## Singular Value Decompositions
 
 ## The Tucker Product
 
@@ -156,27 +154,28 @@ $$
 $$
 is a Tucker product representation of $A$.
 
-And
+#### In Scalar
+
 $$
 \chi(i_1,...,i_d)=\Sigma_{j_1=1}^{r_1}...\Sigma_{j_d=1}^{r_d}S(j_1,...j_d)\cdot U_1(i_1,j_1)\cdot...\cdot U_d(i_d,j_d)\\
 $$
 
 
-### Multilinear Sum Formulation
+#### Multilinear Sum Formulation
 
 Suppose $A\in{\R}^{n_1\times...\times n_d}$ and $U_k\in{\R}^{n_k\times r_k}$. If $A=S\times_1 U_1\times_2 U_2...\times_d U_d$, where $S\in{\R}^{r_1\times...\times r_d}$, then
 $$
 A(\textbf{i})=\Sigma_{\textbf{j}=1}^{\textbf{r}}S(\textbf{j})U_1(i_1,j_1)...U_d(i_d,j_d)
 $$
 
-### Matrix-Vector Product Formulation
+#### Matrix-Vector Product Formulation
 
 Suppose $A\in{\R}^{n_1\times...\times n_d}$ and $U_k\in{\R}^{n_k\times r_k}$. If $A=S\times_1 U_1\times_2  U_2...\times_d U_d$ where $S\in{\R}^{r_1\times...\times r_d}$, then
 $$
 vec(A)=(U_d\otimes...\otimes U_1)\cdot vec(S)
 $$
 
-### Existence Situation
+#### Existence Situation
 
 If $A\in{\R}^{n_1\times...\times n_d}$ and $U_k\in{\R}^{n_k\times n_k}$ is nonsingular for $k=1:d$, then
 $$
@@ -188,14 +187,14 @@ S&=A\times_1 U_1^{-1}\times_2 U_2^{-1}...\times_d U_d^{-1}
 $$
 We will refer to the $U_k$ as the inverse factors and $S$ as the core tensor.
 
-### Core Tensor Unfoldings
+#### Core Tensor Unfoldings
 
 Suppose $A\in{\R}^{n_1\times...\times n_d}$ and $U_k\in{\R}^{n_k\times n_k}$ is nonsingular for $k=1:d$. If $A=S\times_1 U_1\times_2 U_2...\times_d U_d$, then the mode-k unfolding of $S$ satisfy
 $$
 S_{(k)}=U_k^{-1}A_{(k)}(U_d\otimes...\otimes U_{k+1}\otimes U_{k-1}\otimes...\otimes U_1)
 $$
 
-### HOSVD and The Truncated HOSVD
+#### HOSVD and The Truncated HOSVD
 
 Suppose $A\in{\R}^{n_1\times...\times n_d}$ and that its mode-k unfolding has SVD 
 $$
@@ -219,14 +218,14 @@ where\;r_i\leq n_i
 $$
 is a truncated HOSVD of $A$.
 
-### The Modal Unfoldings of the Core Tensor S
+#### The Modal Unfoldings of the Core Tensor S
 
 If $A=S\times_1 U_1\times_2 U_2...\times_d U_d$ is the HOSVD of $A\in{\R}^{n_1\times...\times n_d}$, then for $k=1:d$
 $$
 S_{(k)}=U_k^TA_{(k)}(U_d\otimes...\otimes U_{k+1}\otimes U_{k-1} \otimes...\otimes U_1)
 $$
 
-### The Core Tensor S Encodes Singular Value Information
+#### The Core Tensor S Encodes Singular Value Information
 
 Since $U_k^TA_{(k)}V_k=\Sigma_k$ is the SVD of $A_{(k)},$ we have
 $$
@@ -252,7 +251,7 @@ means\;\;\;\;\;&A(i_1,i_2,i_3,i_4)=B(i_1,i_2)C(i_3,i_4)
 $$
 ......
 
-### The HOSVD as a Sum of Rank-1 Tensors
+#### The HOSVD as a Sum of Rank-1 Tensors
 
 If $A=S\times_1 U_1\times_2 U_2...\times_d U_d$ is the HOSVD of $A\in{\R}^{n_1\times...\times n_d}$, then
 $$
@@ -273,7 +272,7 @@ is\;defined\;by\;\;&B(i_1,i_2,i_3)=f(i_1)g(i_2)h(i_3).
 $$
 The tensor $B\in{\R}^{n_1\times n_2\times n_3}$ is a rank-1 tensor.
 
-### The Kronecker Product Connection
+#### The Kronecker Product Connection
 
 $$
 B=\left[\begin{matrix}f_1\\f_2\end{matrix}\right]\circ \left[\begin{matrix}g_1\\g_2\\g_3\end{matrix}\right]\circ
@@ -281,7 +280,7 @@ B=\left[\begin{matrix}f_1\\f_2\end{matrix}\right]\circ \left[\begin{matrix}g_1\\
 \Leftrightarrow h\otimes g\otimes f
 $$
 
-### The Modal Unfoldings
+#### The Modal Unfoldings
 
 $$
 \begin{align}
@@ -299,7 +298,7 @@ $$
 
 ## The CP Representation (Order-3)
 
-### The Khatri-Rao Product
+#### The Khatri-Rao Product
 
 If
 $$
@@ -315,7 +314,7 @@ F\odot G\odot H=(F\odot G)\odot H=F\odot(G\odot H).
 $$
 
 
-### Kruskal Form
+#### Kruskal Form
 
 We say that $\chi\in{\R}^{n_1\times...\times n_d}$ is in Kruskal form if
 $$
