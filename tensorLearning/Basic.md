@@ -296,7 +296,7 @@ then\;\;&\\
 \end{align}
 $$
 
-## The CP Representation (Order-3)
+## The CP Representation 
 
 #### The Khatri-Rao Product
 
