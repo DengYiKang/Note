@@ -1,4 +1,4 @@
-## Journal
+# Journal
 
 [TOC]
 
@@ -320,3 +320,66 @@ springboot配置日志文件
 有些场景下，应该使用redirec重定向，而不应该直接返回模板？
 
 接口xxxService,其实现xxx，@Autowired注入xxxService也可以成功运行，等同于注入其实现xxx？如果有多个实现，那么注入哪种实现？
+
+## 04.22
+
+注意redirect相当于跳转语句，会执行controller中的语句，而直接return就不会。
+
+jpa建的表默认是CHARSET=latin1编码。
+
+```sql
+/*发现编码不对*/
+show create table t_type;
+/*更改编码*/
+alter table t_type default charset utf8;
+/*虽然charset改过来了，但列的属性没变*/
+show create table t_type;
+/*更改列的属性*/
+alter table t_type change name name varchar(255) CHARACTER SET utf8 DEFAULT NULL;
+```
+
+要想更改hibernate的默认设置，可以重写MySQL55Dialect的getTableTypeString函数：
+
+```java
+public class MysqlConfig extends MySQL55Dialect {
+    @Override
+    public String getTableTypeString() {
+        return " ENGINE=InnoDB DEFAULT CHARSET=utf8";
+    }
+}
+
+```
+
+然后在properties中设置：
+
+```properties
+spring.jpa.properties.hibernate.dialect=com.example.first_web.config.MysqlConfig
+```
+
+话说spring.datasource.url属性值中的characterEncoding=utf8有什么用？数据库本身的编码并不是根据这个决定的。
+
+## 04.25
+
+#### Markdown 转换 HTML
+
+*  [commonmark-java  https://github.com/atlassian/commonmark-java](https://github.com/atlassian/commonmark-java)
+*  pom.xml引用commonmark和扩展插件
+
+```xml
+<dependency>
+   <groupId>com.atlassian.commonmark</groupId>
+   <artifactId>commonmark</artifactId>
+   <version>0.10.0</version>
+</dependency>
+<dependency>
+   <groupId>com.atlassian.commonmark</groupId>
+   <artifactId>commonmark-ext-heading-anchor</artifactId>
+   <version>0.10.0</version>
+</dependency>
+<dependency>
+   <groupId>com.atlassian.commonmark</groupId>
+   <artifactId>commonmark-ext-gfm-tables</artifactId>
+   <version>0.10.0</version>
+</dependency>
+```
+
