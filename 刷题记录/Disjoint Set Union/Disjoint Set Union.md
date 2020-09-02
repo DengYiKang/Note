@@ -20,7 +20,7 @@ void union(int a, int b){
 ## 路径压缩优化
 
 ```java
-int find_root(int v){
+int find_set(int v){
     if(v==parent[v]) return v;
     int root=v;
     while(root!=parent[root]) root=parent[root];
