@@ -32,3 +32,5 @@ JWT的payload各字段意义
 
 java基本类型的范围
 
+序列化s
+
