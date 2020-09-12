@@ -18,6 +18,7 @@ int find_root(int x){
         if(in[i]==x) return i;
     return -1;
 }
+//注意这里的Node是浅拷贝，并不是引用，返回值应该改为Node类型
 void build(Node root, int left, int right){
     if(right<left||cnt<0){
         root=null;
