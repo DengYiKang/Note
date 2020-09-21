@@ -109,7 +109,7 @@ core-site.xml:
   <property>
     <!-- 指定Hadoop运行时产生文件的存储目录 -->
     <name>hadoop.tmp.dir</name>
-    <value>/opt/hadoop-3.2.1/tmp</value>
+    <value>/opt/hadoop-3.2.1/data/tmp</value>
   </property>
 </configuration>
 ```
@@ -193,7 +193,7 @@ slave2
 
 之后在集群上分发配置好的文件。
 
-如果集群是第一次启动，需要格式化NameNode，注意这应该是最后一步，在所有配置文件配置完之后格式化，并且在格式化之前先要把停止所有namenode和datanode进程，以及删除/opt/hadoop-3.2.1/data和/opt/hadoop-3.2.1/logs/*。
+如果集群是第一次启动，需要格式化NameNode，注意这应该是最后一步，在所有配置文件配置完之后格式化，并且在格式化之前先要把停止所有namenode和datanode进程，以及删除/opt/hadoop-3.2.1/data和/opt/hadoop-3.2.1/logs/*。（/data里记录着NameNode与DataNode的clusterId，若不一致则会出现问题）
 
 ```shell
 bin/hdfs namenode -format
@@ -216,5 +216,98 @@ sbin/start-yarn.sh
 ```shell
 #查看集群状态
 hadoop dfsadmin -report
+```
+
+#### 集群启动/停止方式总结
+
+##### 各个服务组件逐一启动/停止
+
++ 分别启动/停止HDFS组件
+
+  ```shell
+  hadoop-daemon.sh start/stop namenode/datanode/secondarynamenode
+  ```
+
++ 启动/停止YARN
+
+  ```shell
+  yarn-daemon.sh start/stop resourcemanager/nodemanager
+  ```
+
+##### 各个模块分开启动/停止（配置ssh是前提）
+
++ 整体启动/停止HDFS
+
+  ```shell
+  start-dfs.sh / stop-dfs.sh
+  ```
+
++ 整体启动/停止YARN
+
+  ```shell
+  start-yarn.sh / stop-yarn.sh
+  ```
+
+#### 集群时间同步
+
+##### 时间服务器配置
+
+用master做时间服务器
+
+```shell
+yum install ntp
+```
+
+```shell
+vi /etc/ntp.conf
+```
+
+修改内容如下：
+
+```shell
+#授权192.168.200.0-192.168.200.255网段上的所有机器可以从这台机器查询和同步时间
+#restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap为
+restrict 192.168.200.0 mask 255.255.255.0 nomodify notrap
+
+#集群在局域网中，不使用其他互联网上的时间
+#注释掉下面四行
+#server 0.centos.pool.ntp.org iburst
+#server 1.centos.pool.ntp.org iburst
+#server 2.centos.pool.ntp.org iburst
+#server 3.centos.pool.ntp.org iburst
+
+#当该节点丢失网络连接，依然可以采用本地时间作为时间服务器为集群中的其他节点提供时间同步
+server 127.127.1.0
+fudge 127.127.1.0 stratum 10
+```
+
+```shell
+vi /etc/sysconfig/ntpd
+```
+
+增加以下内容：
+
+```shell
+#让硬件时间与系统时间一起同步
+SYNC_HWCLOCK=yes
+```
+
+```shell
+service ntpd start
+#设置ntpd服务开机启动
+chkconfig ntpd on
+```
+
+##### 其他机器配置
+
+```shell
+crontab -e
+```
+
+编写定时任务如下：
+
+```shell
+#每10分钟与时间服务器同步一次
+*/10 * * * * /usr/sbin/ntpdate master
 ```
 
