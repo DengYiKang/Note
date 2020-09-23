@@ -14,7 +14,7 @@ public interface Comparable{
 
 接口中的所有方法自动属于public。因此，在接口中声明方法时，不必提供关键字public。
 
-接口可包含多个方法，还可以定义常量，==但接口决不能含有实例域==，在Java SE 8之后，可以在接口中实现简单方法了。
+接口可包含多个方法，还可以定义常量，但接口决不能含有实例域，在Java SE 8之后，可以在接口中实现简单方法了。
 
 为了让类实现一个接口，通常有以下步骤：
 
@@ -66,9 +66,9 @@ public interface Comparable{
   }
   ```
 
-  ==与接口中的方法都自动设置为public一样，接口中的域将被自动设为public static final==。
+  与接口中的方法都自动设置为public一样，接口中的域将被自动设为public static final。
 
-+ 有些类只定义了常量，而没有定义方法。如，标准库中一个SwingConstants，其中只包含NORTH等常量。任何实现了SwingConstants接口的类都自动地继承了这些常量，并可以在方法中==直接引用NORTH==，而不必采用SwingConstants.NORTH这样的繁琐形式。但建议不用，因为违背接口的初衷。
++ 有些类只定义了常量，而没有定义方法。如，标准库中一个SwingConstants，其中只包含NORTH等常量。任何实现了SwingConstants接口的类都自动地继承了这些常量，并可以在方法中直接引用NORTH，而不必采用SwingConstants.NORTH这样的繁琐形式。但建议不用，因为违背接口的初衷。
 
 + 尽管每个类只能够拥有一个超类，但可以实现多个接口：
 
@@ -188,14 +188,14 @@ Arrays.sort(friends, new LengthComparator());
 
 直接复制一般为浅拷贝。如果原对象和浅克隆对象共享的子对象是不可变的，那么这种共享是安全的。如果子对象是属于一个不可变的类，如String，或者在对象的生命周期中，子对象一直包含不变的常量，没有更改器方法会改变它，也没有方法生成它的引用，也是同样安全的。
 
-==注意==，Object类中的clone方法声明为protected，所以不能直接调用anObject.clone()。因此，需要：
+注意，Object类中的clone方法声明为protected，所以不能直接调用anObject.clone()。因此，需要：
 
 + 实现Cloneable接口
 + 重新定义clone方法，并指定public访问修饰符
 
 在这里，Cloneable接口的出现于接口的正常使用没有关系。它没有指定clone方法，这个方法是从Object继承的。这个接口只是作为一个标记。如果一个对象请求克隆，但没有实现这个接口，就会生成一个受查异常。
 
-==注意==：Cloneable接口是Java提供的一组标记接口之一。标记接口不含任何方法；它的唯一作用就是允许在类型查询中使用instanceof：
+注意：Cloneable接口是Java提供的一组标记接口之一。标记接口不含任何方法；它的唯一作用就是允许在类型查询中使用instanceof：
 
 ```java
 if(obj instanceof Cloneable) ...;
@@ -401,7 +401,7 @@ Person[] people=stream.toArray(Person[]::new);
   //Error
   ```
 
-+ 在一个lambda表达式中使用this关键字时，是指==创建这个lambda表达式的方法==的this参数：
++ 在一个lambda表达式中使用this关键字时，是指创建这个lambda表达式的方法的this参数：
 
   ```java
   public class Application(){
@@ -479,11 +479,11 @@ repeat(100, i->System.out.println(i));
 |PBinaryOperator|p, p|p|appluAsP|
 |PPredicate|p|boolean|test|
 
-==注==：p, q为int, long, double; P, Q为Int, Long, Double。
+> 注：p, q为int, long, double; P, Q为Int, Long, Double。
 
-==注==：大多数标准函数式接口都提供了非抽象方法来生成或合并函数。如，Predicate.isEqual(a)等同于a::equals。已经提供了默认方法and、or或negate来合并谓词。如，Predicate.isEqual(a).or(Predicate.isEqual(b))就等同于  x->a.equals(x) || b.equals(x)。
+> 注：大多数标准函数式接口都提供了非抽象方法来生成或合并函数。如，Predicate.isEqual(a)等同于a::equals。已经提供了默认方法and、or或negate来合并谓词。如，Predicate.isEqual(a).or(Predicate.isEqual(b))就等同于  x->a.equals(x) || b.equals(x)。
 
-==注==：如果设计接口，其中只有一个抽象方法，可以用@FunctionalInterface注解来标记接口。有两个优点：若无意中增加了另一个非抽象方法，编译器会产生一个错误信息。另外javadoc页里会指出你的接口是一个函数式接口。
+> 注：如果设计接口，其中只有一个抽象方法，可以用@FunctionalInterface注解来标记接口。有两个优点：若无意中增加了另一个非抽象方法，编译器会产生一个错误信息。另外javadoc页里会指出你的接口是一个函数式接口。
 
 ### 再谈Comparator
 
@@ -529,7 +529,7 @@ Arrays.sort(people,
 
 ### 使用内部类访问对象状态
 
-==一个外围类含有内部类，这并不意味着每个外围类都有对应的内部类的实例==。
+一个外围类含有内部类，这并不意味着每个外围类都有对应的内部类的实例。
 
 内部类既可以访问自身的数据域，也可以访问创建它的外围类对象的数据域。
 
@@ -561,7 +561,7 @@ TalkingClock.TimePrinter listener=jabberer.new TimePrinter();
 OuterClass.InnerClass
 ```
 
-==注==：内部类中声明的所有静态域都必须是final的。
+注：内部类中声明的所有静态域都必须是final的。
 
 ### 局部内部类
 
@@ -657,13 +657,13 @@ invite(new ArrayList<String>(){{add("...");add("...");}})
 
 注意这里的双括号。外层括号建立了ArrayList的一个匿名子类。内层括号则是一个对象构造块。
 
-==注意==：以下语句对匿名子类做测试会失败：
+> 注意：以下语句对匿名子类做测试会失败：
 
 ```java
 if(getClass()!=other.getClass()) return false;
 ```
 
-==提示==：生成日志或调试信息时，通常希望包含当前类的类名，如：
+> 提示：生成日志或调试信息时，通常希望包含当前类的类名，如：
 
 ```java
 System.err.println("Something awful happened in"+getClass());
@@ -698,11 +698,11 @@ class ArrayAlg{
 ArrayAlg.Pair p=ArrayAlg.minmax(d);
 ```
 
-==注释==：在内部类不需要访问外围类对象的时候，应该使用静态内部类。
+> 注释：在内部类不需要访问外围类对象的时候，应该使用静态内部类。
 
-==注释==：与常规内部类不同，静态内部类可以有静态域和方法。
+> 注释：与常规内部类不同，静态内部类可以有静态域和方法。
 
-==注释==：声明在接口中的内部类自动成为static和public类。
+> 注释：声明在接口中的内部类自动成为static和public类。
 
 ## 代理
 
@@ -772,7 +772,7 @@ class TraceHandler{
 288.toString()
 ```
 
-==注意==：即使不属于Comparable接口，toString方法也被代理，而且有相当一部分的Object方法都被代理。
+> 注意：即使不属于Comparable接口，toString方法也被代理，而且有相当一部分的Object方法都被代理。
 
 ### 代理类特性
 
