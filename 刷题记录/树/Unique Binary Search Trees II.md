@@ -16,6 +16,7 @@ class Solution {
     List<TreeNode> build(int lo, int hi){
         List<TreeNode> trees=new ArrayList<>();
         if(lo>hi){
+            //注意别忘了！
             trees.add(null);
             return trees;
         }
