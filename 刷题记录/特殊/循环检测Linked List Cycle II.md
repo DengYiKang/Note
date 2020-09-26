@@ -6,6 +6,8 @@
 
 ### 解决方案
 
+#### Floyd's Tortoise and Hare (Cycle Detection)算法
+
 现有两个指针first，second，first的步长为1，second的步长为2，它们相遇在点meet，meet离环的起点的距离为m。设链表的起点到环的起点的距离为s。
 
 first走过的路程为$s+n_1r+m$，second走过路程为$2(s+n_1r+m)$，

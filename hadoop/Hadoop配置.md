@@ -1,5 +1,7 @@
 # Hadoop配置
 
+[TOC]
+
 ### centos7网络配置
 
 ```shell
@@ -171,7 +173,7 @@ mapred-env.sh:
 export JAVA_HOME=/opt/jdk1.8.0_221
 ```
 
-mapred-env.xml:
+mapred-site.xml:
 
 ```xml
 <configuration>
@@ -179,6 +181,19 @@ mapred-env.xml:
   <property>
     <name>mapreduce.framework.name</name>
     <value>yarn</value>
+  </property>
+  <!-- Hadoop3.2.1需要指定如下路径 -->
+  <property>
+    <name>yarn.app.mapreduce.am.env</name>
+    <value>HADOOP_MAPRED_HOME=/opt/hadoop-3.2.1</value>
+  </property>
+  <property>
+    <name>mapreduce.map.env</name>
+    <value>HADOOP_MAPRED_HOME=/opt/hadoop-3.2.1</value>
+  </property>
+  <property>
+    <name>mapreduce.reduce.env</name>
+    <value>HADOOP_MAPRED_HOME=/opt/hadoop-3.2.1</value>
   </property>
 </configuration>
 ```
@@ -218,6 +233,14 @@ sbin/start-yarn.sh
 hadoop dfsadmin -report
 ```
 
+#### 浏览器查看集群状态
+
+`master:8042`:总览
+
+`slave1:8080`:查看ResourceManager
+
+`slave2:50090`：空白...这里配置的是SecondaryNameNode，推测当NameNode挂了之后才会显示信息？
+
 #### 集群启动/停止方式总结
 
 ##### 各个服务组件逐一启动/停止
@@ -247,6 +270,58 @@ hadoop dfsadmin -report
   ```shell
   start-yarn.sh / stop-yarn.sh
   ```
+
+#### 测试
+
+```shell
+hdfs dfs -mkdir /user/root/input
+hdfs dfs -put ./test /user/root/input/
+#自带的wordcount测试jar包
+hadoop jar /opt/hadoop-3.2.1/share/hadoop/mapreduce/hadoop-mapreduce-examples-3.2.1.jar wordcount /user/root/input /user/root/output
+```
+
+#### 配置历史服务器
+
+配置`mapred-site.xml`：
+
+```xml
+  <!-- 历史服务器端地址 -->
+  <property>
+    <name>mapreduce.jobhistory.address</name>
+    <value>master:10020</value>
+  </property>
+  <!-- 历史服务器web端地址 -->
+  <property>
+    <name>mapreduce.jobhistory.webapp.address</name>
+    <value>master:19888</value>
+  </property>
+```
+
+```shell
+#启动历史服务器
+sbin/mr-jobhistory-daemon.sh start historyserver
+```
+
+那么可以在`http://master:19888/jobhistory`上查看任务历史。
+
+#### 配置日志的聚集
+
+MapReduce是在各个机器上运行的，在运行过程中产生的日志存在于各个机器上，为了能够统一查看各个机器的运行日志，将日志集中存放在HDFS上，这个过程就是日志聚集。
+
+配置`yarn-site.xml`:
+
+```xml
+  <!-- 日志聚集功能 -->
+  <property>
+    <name>yarn.log-aggregation-enable</name>
+    <value>true</value>
+  </property>
+  <!-- 日志保留时间设置7天，单位秒 -->
+  <property>
+    <name>yarn.log-aggregation.retain-seconds</name>
+    <value>604800</value>
+  </property>
+```
 
 #### 集群时间同步
 
