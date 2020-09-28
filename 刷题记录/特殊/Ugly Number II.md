@@ -26,3 +26,38 @@ class Solution {
 }
 ```
 
+通用的解法：
+
+```java
+class Solution {
+    public int nthSuperUglyNumber(int n, int[] primes) {
+        if(n<1) return 0;
+        if(n==1) return 1;
+        int[] ans=new int[n];
+        int[] cnt=new int[primes.length];
+        ans[0]=1;
+        for(int i=1; i<n; i++){
+            findNext(ans, cnt, primes, i);
+        }
+        return ans[n-1];
+    }
+    void findNext(int[] ans, int[] cnt, int[] primes, int index){
+        int min=Integer.MAX_VALUE;
+        List<Integer> list=new ArrayList<>();
+        for(int i=0; i<cnt.length; i++){
+            if(min>ans[cnt[i]]*primes[i]){
+                min=ans[cnt[i]]*primes[i];
+            }
+        }
+        //虽然是从小到大排列，但是要注意相等的值
+        for(int i=0; i<cnt.length; i++){
+            if(min==ans[cnt[i]]*primes[i]) list.add(i);
+        }
+        ans[index]=min;
+        for(int pos:list){
+            cnt[pos]++;
+        }
+    }
+}
+```
+
