@@ -83,4 +83,121 @@ HotSpot虚拟机的对象头包括两部分信息。第一部分用于存储对�
 Java程序需要通过栈上的reference数据来操作堆上的具体对象。对象访问方式取决于虚拟机实现而定的。目前主流的访问方式有使用句柄和直接指针两种：
 
 + 若使用句柄，那么Java堆中将会划分出一块内存来作为句柄池，ref中存储的就是对象的句柄地址，而句柄中包含了对象实例数据与类型数据各自的具体地址信息。
+
+  ![image-20201010111141235](../pic/2.png)
+
 + 若使用指针，那么Java堆对象的布局中就必须考虑如何放置访问类型数据的相关信息，而ref中存储的直接就是对象地址。
+
+  ![image-20201010111313111](/home/yikang/Documents/gitFiles/Note/深入理解Java虚拟机/pic/3.png)
+
+## 异常示例
+
+以下示例均在HotSpot虚拟机的环境下进行。
+
+### Java堆溢出
+
+```java
+/**
+*-Xms堆的最小值， -Xmx堆的最大值， 两者值相等可以避免堆自动扩展
+*-XX:+HeapDumpOnOutOfMemoryError使虚拟机在出现内存溢出异常时Dump出当前的内存堆转储快照以便事后进行分
+*析
+*VM Args: -Xms20m -Xmx20m -XX:+HeapDumpOnOutOfMemoryError
+*/
+public class HeapOOM{
+    static class OOMObject{}
+    public static void main(String[] args){
+        List<OOMObject> list=new ArrayList<OOMObject>();
+        while(true){
+            list.add(new OOMObject());
+        }
+    }
+}
+```
+
+```bash
+java.lang.OutOfMemoryError: Java heap space
+Dumping heap to java_pid3404.hprof ...
+Heap dump file created [22045981 bytes in 0.663 secs]
+```
+
+### 虚拟机栈和本地方法栈溢出
+
+对于HotSpot虚拟机，栈容量只由`-Xss`参数设定。关于虚拟机栈和本地方法栈，有两种异常描述：
+
++ 若线程请求的栈深度大于虚拟机所允许的最大深度，将抛出`StackOverflowError`异常
++ 若虚拟机在扩展栈时无法申请到足够的内存空间，则抛出`OutOfMemoryError`异常
+
+上面两种情况有重叠部分，当栈空间无法继续分配时，是内存太小还是已使用的栈空间太大？
+
+可做如下两实验：
+
++ 使用`-Xss`参数减少栈内存容量，结果抛出`StackOverflowError`异常
++ 定义大量本地变量，增大此方法帧中本地变量表的长度，结果抛出`StackOverflowError`异常
+
+事实上，在单个线程下，无论是由于栈帧太大还是虚拟机栈容量太小，当内存无法分配时，虚拟机抛出的都是
+
+都是`StackOverflowError`异常。
+
+```java
+/**
+*第一点的测试程序
+*VM Args: -Xss128k
+*/
+public class JavaVMStackSOF{
+    private int stackLength=-1;
+    public void stackLeak(){
+        stackLength++;
+        stackLeak();
+    }
+}
+public static void main(String[] args) throws Throwable{
+    JavaVMStackSOF oom=new JavaVMStackSOF();
+    try{
+        oom.stackLeak();
+    }catch(Throwable e){
+        System.out.println("Stack length:"+oom.stackLength);
+        throw e;
+    }
+}
+```
+
+> 每个线程分配的栈容量越大，可以建立的线程数量自然就越少，建立线程时就越容易把剩下的内存耗尽。
+>
+> 但是如果是建立过多线程导致的内存溢出，在不能减少线程数或者更换64位虚拟机的情况下，就只能通过减少最大堆和减少栈容量来换取更多的线程。
+
+### 方法区和运行时常量池溢出
+
+`String.intern()`是一个`Native`方法，作用是：若字符串常量池中已经包含一个等于此String对象的字符串，则返回池中的该字符串String对象，否则将此String对象包含的字符串添加到常量池中，并返回该对象的引用。
+
+```java
+/**
+*VM Args: -XX:PermSize=10M -XX:MaxPermSize=10M
+*/
+public class RuntimeConstantPoolOOM{
+    public static void main(String[] args){
+        //保持引用，避免GC回收
+        List<String> list=new ArrayList<>();
+        int i=0;
+        while(true){
+            list.add(String.valueOf(i++).intern());
+        }
+    }
+}
+```
+
+```java
+public class RuntimeConstantPoolOOM{
+    public static void main(String[] args){
+        String str1=new StringBuilder("计算机").append("软件").toString();
+        //jdk1.6中输出false,1.7输出true
+        System.out.println(str1.intern()==str1);
+        String str2=new StringBuilder("ja").append("va").toString();
+        //jdk1.6与1.7均输出false
+        System.out.println(str2.intern()==str2);
+    }
+}
+```
+
+上段代码在`jdk1.6与1.7`的输出不同是因为`String.intern()`的实现不同。
+
+`jdk1.6`中，`intern()`会把首次遇到的字符串示例复制到永久代中，返回的也是永久代上的引用，而`StringBuilder`创建的字符串示例在Java堆上，显然不是一个引用。而`jdk1.7`中的`intern()`不会再复制实例，只是在常量池记录首次出现的实例引用，因此返回的是同一个，但是对于`“java”`字符串，常量池在之前已经有了，因此输出false。
