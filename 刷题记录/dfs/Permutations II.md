@@ -38,7 +38,7 @@ class Solution {
             return;
         }
         int pre=pos;
-        //在这个循环中，如果搜索的第二个跟第一个重复，则剪枝
+        //注意，判重是在下一个位置不能出现相同的数，注意别把前一个位置比较进去了，所以引入了first
         boolean first=true;
         for(int i=0; i<nums.length; i++){
             if(vis[i]) continue;
