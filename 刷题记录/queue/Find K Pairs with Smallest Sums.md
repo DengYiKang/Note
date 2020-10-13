@@ -6,6 +6,8 @@
 
 ### 解决方案：优先队列
 
+<img src="../pic/9.jpg" style="zoom:50%;" />
+
 ```java
 class Solution {
     public List<List<Integer>> kSmallestPairs(int[] nums1, int[] nums2, int k) {
