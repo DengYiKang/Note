@@ -298,3 +298,21 @@ public interface Map.Entry<K, V>{
 }
 ```
 
+## 双端队列
+
+```java
+Deque<String> deque = new LinkedList<String>();
+//从队首加入元素(队列有容量限制时用，无则用addFirst)
+deque.offerFirst("c");
+//从队尾加入元素(队列有容量限制时用，无则用addLast)
+deque.offerLast("g");
+/*获取并移除队列第一个元素,pollFirst()也是，区别在于队列为空时,removeFirst会抛出NoSuchElementException异常，后者返回null*/
+deque.removeFirst();
+/*获取并移除队列第一个元素,此方法与pollLast 唯一区别在于队列为空时,removeLast会抛出NoSuchElementException异常，后者返回null*/
+deque.removeLast();
+/*获取队列第一个元素.此方法与 peekFirst 唯一的不同在于：如果此双端队列为空，它将抛出NoSuchElementException，后者返回null*/
+System.out.println("获取队列第一个元素为:"+deque.getFirst());
+/*获取队列最后一个元素.此方法与 peekLast 唯一的不同在于：如果此双端队列为空，它将抛出NoSuchElementException，后者返回null*/
+System.out.println("获取队列最后一个元素为:"+deque.getLast());
+```
+
