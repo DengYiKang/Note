@@ -30,7 +30,7 @@ static {
 }
 ```
 
-`AtomicInteger`的构造方法、get、set方法是非线程安全的：
+`AtomicInteger`的构造方法、get、set方法，由于`value`被`volatile`修饰，因此这些方法都具有`volatile`语义：
 
 ```java
 public AtomicInteger(int initialValue) {
@@ -93,12 +93,13 @@ public final boolean compareAndSet(int expect, int update) {
 
 `Unsafe`类的`compareAndSwapInt`俗称CAS操作，判断某个内存中的位置`valueOffset`的值是否为期待值`expect`，如果是那就把他替换为`update`。在一些情况下替代`synchronized`，避免过多的消耗。
 
-注意的是还有`weakCompareAndSet`方法：
+可是有了`volatile`语义，为什么还需要CAS操作？因为虽然get和set方法是直接读取和写入内存的，但是get到的值肯定是需要拷贝到本地来做运算处理，但是在运算期间内存的值可能发生了变化，例如`i++`操作，如另一个线程对`i`进行了更新，而本线程仍保存的旧值，那么将覆盖另一个线程的结果。
+
+值得注意的是还有`weakCompareAndSet`方法：
 
 ```java
 /**
-* <p><a href="package-summary.html#weakCompareAndSet">May fail
-* spuriously and does not provide ordering guarantees</a>, so is
+* May failspuriously and does not provide ordering guarantees, so is
 * only rarely an appropriate alternative to {@code compareAndSet}.
 */
 public final boolean weakCompareAndSet(int expect, int update) {
