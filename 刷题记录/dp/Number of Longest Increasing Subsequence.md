@@ -13,8 +13,6 @@ $$
 len[i]=max\{len[j]+1, len[i]\}, if\;j<i\;and\;A[j]<A[i]\\
 count[i]+=count[j],\;if\;j<i\;and\;len[i]=len[j]+1\;and\;A[j]<A[i]
 $$
-`count[i]`的那个条件表示当前位结尾的LIS的长度为整体的LIS的长度。
-
 ```java
 class Solution {
     public int findNumberOfLIS(int[] nums) {
