@@ -16,7 +16,28 @@ public class SomePopularObject{
 SomePopularObject[] array=new SomePopularObject[n];
 ```
 
-不考虑class head等字节空间，其内部变量有8个long类型的变量，恰好为64字节。在64字节缓存行的体系里面，这样能保证`array`数组的相邻元素占用不同的缓存行。
+不考虑object header等字节空间(实际上object header占12字节，this变量占4字节，总共16字节)，其内部变量有8个long类型的变量，恰好为64字节。在64字节缓存行的体系里面，这样能保证`array`数组的相邻元素占用不同的缓存行。
+
+可以用jol工具查看object的布局：
+
+```shell
+FalseSharing$SomePopularObject object internals:
+ OFFSET  SIZE   TYPE DESCRIPTION                               VALUE
+      0     4        (object header)                           01 00 00 00 (00000001 00000000 00000000 00000000) (1)
+      4     4        (object header)                           00 00 00 00 (00000000 00000000 00000000 00000000) (0)
+      8     4        (object header)                           43 c1 00 20 (01000011 11000001 00000000 00100000) (536920387)
+     12     4        (alignment/padding gap)                  
+     16     8   long SomePopularObject.value                   0
+     24     8   long SomePopularObject.p1                      0
+     32     8   long SomePopularObject.p2                      0
+     40     8   long SomePopularObject.p3                      0
+     48     8   long SomePopularObject.p4                      0
+     56     8   long SomePopularObject.p5                      0
+     64     8   long SomePopularObject.p6                      0
+     72     8   long SomePopularObject.p7                      1
+Instance size: 80 bytes
+Space losses: 4 bytes internal + 0 bytes external = 4 bytes total
+```
 
 但JVM会对dead code进行优化，这些dead code将会被编译器删除，那么我们可以这样做来避免被优化掉：
 
@@ -32,3 +53,4 @@ SomePopularObject[] array=new SomePopularObject[n];
 ```
 
 所幸的是，Java8引入了`@Contented`注解来避免手动添加dead variables。JVM将在被`@Contented`注解的域的后面插入128字节的padding（为什么是128字节而不是64字节？我看有些资料解释prefetcher指令取得是2块缓存行，所以是128字节，然而还是不理解）。
+
