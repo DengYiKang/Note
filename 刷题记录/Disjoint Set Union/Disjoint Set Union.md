@@ -25,9 +25,9 @@ int find_set(int v){
     int root=v;
     while(root!=parent[root]) root=parent[root];
     while(v!=root){
-        int tmp=v;
-        parent[tmp]=root;
-        v=parent[v];
+        int tmp=parent[v];
+        parent[v]=root;
+        v=tmp;
     }
     return root;
 }
