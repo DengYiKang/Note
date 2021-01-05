@@ -54,3 +54,98 @@ SomePopularObject[] array=new SomePopularObject[n];
 
 所幸的是，Java8引入了`@Contented`注解来避免手动添加dead variables。JVM将在被`@Contented`注解的域的后面插入128字节的padding（为什么是128字节而不是64字节？我看有些资料解释prefetcher指令取得是2块缓存行，所以是128字节，然而还是不理解）。
 
+```java
+public class SomePopularObject {
+    @Contended
+    public volatile long usefulVal;
+    public volatile long anotherVal;
+}
+```
+
+### JMH测试
+
+```java
+package benchmark;
+
+import org.openjdk.jmh.annotations.*;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.Options;
+import org.openjdk.jmh.runner.options.OptionsBuilder;
+import sun.misc.Contended;
+
+
+@State(Scope.Benchmark)
+//注意@Contented应该与-XX:-RestrictContended配合使用
+//-XX:ContendedPaddingWidth允许你控制padding大小，默认是128
+@Fork(value = 1, jvmArgsPrepend = "-XX:-RestrictContended")
+@Warmup(iterations = 3)
+@Measurement(iterations = 10)
+public class ContentedBenchmarks {
+    private UnpaddedObject unpaddedObject = new UnpaddedObject();
+    private PaddedObject paddedObject = new PaddedObject();
+
+
+    @Group("unpadded")
+    @GroupThreads(10)
+    @Benchmark
+    public long updateUnpaddedA() {
+        return unpaddedObject.a++;
+    }
+
+    @Group("unpadded")
+    @GroupThreads(10)
+    @Benchmark
+    public long updateUnpaddedB() {
+        return unpaddedObject.b++;
+    }
+
+    @Group("padded")
+    @GroupThreads(10)
+    @Benchmark
+    public long updatePaddedA() {
+        return paddedObject.a++;
+    }
+
+    @Group("padded")
+    @GroupThreads(10)
+    @Benchmark
+    public long updatePaddedB() {
+        return paddedObject.b++;
+    }
+
+    public static void main(String[] args) throws RunnerException {
+        Options opt = new OptionsBuilder()
+                .include(ContentedBenchmarks.class.getSimpleName())
+                .build();
+        new Runner(opt).run();
+    }
+
+    static class UnpaddedObject {
+        public long a;
+        public long b;
+    }
+
+    static class PaddedObject {
+        @Contended
+        public long a;
+        public long b;
+    }
+}
+
+```
+
+结果：
+
+```
+Benchmark                                      Mode  Cnt          Score         Error Units
+ContentedBenchmarks.padded                    thrpt   10  284236715.113 ± 7925784.208  ops/s
+ContentedBenchmarks.padded:updatePaddedA      thrpt   10  141359994.411 ± 3961123.177  ops/s
+ContentedBenchmarks.padded:updatePaddedB      thrpt   10  142876720.702 ± 5500894.467  ops/s
+ContentedBenchmarks.unpadded                  thrpt   10  158332107.536 ± 1287695.576  ops/s
+ContentedBenchmarks.unpadded:updateUnpaddedA  thrpt   10   82114654.267 ± 2191121.210  ops/s
+ContentedBenchmarks.unpadded:updateUnpaddedB  thrpt   10   76217453.269 ± 1938877.529  ops/s
+```
+
+
+

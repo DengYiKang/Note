@@ -1,5 +1,7 @@
 # JMH - Java Microbenchmark Harness
 
+[TOC]
+
 ## 配置
 
 在maven项目的pom文件中添加依赖：
@@ -68,24 +70,28 @@ public class MyBenchmark {
      */ 
     @Benchmark
     @Group("one")
+    @GroupThreads(3)
     public void testMethod1(MyState state) {
         state.sum = state.a + state.b;
     }
     
     @Benchmark
     @Group("one")
+    @GroupThreads(1)
     public void testMethod2(MyState state){
         state.sum++;
     }
     
 	@Benchmark
     @Group("two")
+    @GroupThreads(3)
     public void testMethod3(MyState state) {
         state.sum = state.a + state.b;
     }
     
     @Benchmark
     @Group("two")
+    @GroupThreads(1)
     public void testMethod4(MyState state){
         state.sum++;
     }
@@ -152,4 +158,5 @@ public class MyBenchmark {
 
 > 注意，一个benchmark有多轮iterations，一个iteration有多个invocations
 
- 
+##  
+
