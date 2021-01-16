@@ -16,7 +16,7 @@ class Solution {
         Arrays.fill(type, -1);
         for(int i=0; i<N; i++){
             if(type[i]==-1) type[i]=0;
-            if(!dfs(i, graph, type)) return false;
+            else if(!dfs(i, graph, type)) return false;
         }
         return true;
     }
