@@ -653,7 +653,7 @@ private int checkInterruptWhileWaiting(Node node) {
 
 ```java
 //取消等待后，将node状态设为0，将它入队同步队列
-//如果另一个线程先调用了signal方法（即上述所说的中断流程发生在signa流程之后），返回false，否则true
+//如果另一个线程先调用了signal方法（中断流程发生在signa流程之后），返回false，否则true
 final boolean transferAfterCancelledWait(Node node) {
     if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
         enq(node);
