@@ -732,7 +732,7 @@ final boolean transferForSignal(Node node) {
 - `await()`在从开头到`fullyRelease`执行前，是持有锁的。
 - `await()`在从`fullyRelease`执行后 到 `acquireQueued`执行前，是没有持有锁的。
 - `await()`在 `acquireQueued`执行后到最后，是持有锁的。
-- `signal() signalAll()`全程都是持有锁的。
+- `signal()`、` signalAll()`全程都是持有锁的。
 
 `await()`的整体流程如下：
 
@@ -784,7 +784,7 @@ public final long awaitNanos(long nanosTimeout)
             LockSupport.parkNanos(this, nanosTimeout);
         if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
             break;
-        //
+        
         nanosTimeout = deadline - System.nanoTime();
     }
     if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
