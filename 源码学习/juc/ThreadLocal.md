@@ -1,5 +1,7 @@
 # ThreadLocal
 
+[TOC]
+
 这个类提供线程本地变量。各个线程通过该类的get/set方法来访问线程隔离的变量。表面上看好像是ThreadLocal维护了一个变量表，存储着各个线程的同一个变量名的不同版本，事实上该变量是存储在各个线程内的map中的。一个线程得到一个ThreadLocal实例时，将ThreadLocal实例作为map中的key取访问本地的map，得到本地的ThreadLocal实例对应的变量。
 
 ## 例子
@@ -475,10 +477,67 @@ private void resize() {
 }
 ```
 
-### 总结
+## 总结
 
 + ThreadLocalMap是Thread类的成员变量，在ThreadLocal类中定义，由ThreadLocal类提供包装的set/get方法。
 + Thread通过ThreadLocal实例来访问对应的本地变量，本地变量由Thread和ThreadLocal来对应。
 + 第一次调用get时，如果map中没有对应的key，那么将会调用`initialValue`。理论上`initialValue`只会被调用一次，除非使用`remove`方法。
 + ThreadLocalMap是核心内部类，在它提供的set/get方法中，每次搜索到stale entry，都会对它为首的连续段进行清理。这种清理机制能保证待搜索的位置一定在以hash值下标为首的连续段中，提高了搜索效率。
 + 当所用量大于1/2时，将进行扩容。
+
+## 面试问题
+
+### ThreadLocal的用途
+
+- ThreadLocal用来给各个线程提供线程隔离的局部变量。使用很简单，通过调用同一个ThreadLocal对象的get/set方法来读写这个ThreadLocal对象对应的value，但是线程A set值后，不会影响到线程B之后get到的值。
+- ThreadLocal对象通常是`static`的，因为它在map里作为key使用，所以在各个线程中需要复用。
+
+### 简单说下ThreadLocal的实现原理
+
+- 每个线程在运行过程中都可以通过`Thread.currentThread()`获得与之对应的Thread对象，而每个Thread对象都有一个`ThreadLocalMap`类型的成员，`ThreadLocalMap`是一种hashmap，它以ThreadLocal作为key。
+- 所以，只有通过Thread对象和ThreadLocal对象二者，才可以唯一确定到一个value上去。线程隔离的关键，正是因为这种对应关系用到了Thread对象。
+- 线程可以根据自己的需要往`ThreadLocalMap`里增加键值对，当线程从来没有使用到ThreadLocal时（指调用get/set方法），Thread对象不会初始化这个`ThreadLocalMap`类型的成员。
+
+### 讲讲ThreadLocalMap这个Map
+
+- 它是一种特殊实现的HashMap实现，它必须以ThreadLocal类型作为key。
+- 容量必为2的幂，使得它，可通过位与操作得到数组下标。
+- 在解决哈希冲突时，使用开放寻址法（索引往后移动一位）和环形数组（索引移动到length时，跳转到0）。这样，只有size到达threshold时，才会resize操作。
+
+### ThreadLocal作为key，它的哈希值怎么计算的？
+
+- 利用魔数`0x61c88647`从0递增，得到每个ThreadLocal对象的哈希值。
+- 两个线程同时构造ThreadLocal对象，也能保证它俩的哈希值不同，因为利用了AtomicInteger。
+- 利用魔数`0x61c88647`的好处在于，这样得到的哈希值再取模得到下标，下标是均匀分布的。而这又可能带了另一个好处：当哈希冲突时，大概率能更快找到可以放置的位置。
+- 不要被魔数`0x61c88647`的网上示例迷惑，示例通常将魔数递增16次，再将每次递增的结果取模16，发现16次取模的结果（0-15）都不一样。这一点确实有点神奇，它利用了斐波那契数列（和黄金分割数），但是你把魔数定为`0x01`，一样能实现16次取模的结果（0-15）都不一样。重点在于，它能均匀分布。
+
+### 为什么Entry继承了WeakReference？
+
+- 首先，WeakReference的父类成员referent，如果referent指向的对象没有强引用指着它，那么referent指向的对象就可能被回收，从而使得referent引用为null。
+- 而referent成员是作为key来使用的，这样key为null的entry（称为stale entry）在get/set操作中**可能**会被间接清理掉。
+- 所以，继承WeakReference的原因是为了能更快回收资源，但前提是：
+    - 没有强引用指向ThreadLocal对象。
+    - 且jvm执行了gc，回收了ThreadLocal对象，出现了stale entry。
+    - 且之后get/set操作的间接调用刚好清理掉了这个stale entry。
+- 综上得知，要想通过WeakReference来获得更快回收资源的好处，其实比较难。所以，当你知道当前线程已经不会使用这个ThreadLocal对应的值时，显式调用`remove`将是最佳选择。
+
+### Entry继承了WeakReference，可能造成内存泄漏？
+
+- 首先要知道，这一点并不是WeakReference的锅。
+- 一般情况下，ThreadLocal对象都会设置成`static`域，它的生命周期通常和一个类一样长。
+- 当一个线程不再使用ThreadLocal读写值后，如果不调动`remove`，这个线程针对该ThreadLocal设置的value对象就已经内存泄漏了。且由于ThreadLocal对象生命周期一般很长，现在Entry对象、它的referent成员、它的value成员三者都内存泄漏。
+- 而Entry继承了WeakReference，反而降低了内存泄漏的可能性（见上一问题）。
+- 综上得知，内存泄漏不是因为继承了WeakReference，而且因为ThreadLocal对象生命周期一般很长，且使用完毕ThreadLocal后，线程没有主动调用`remove`。
+
+### 线程池中的线程使用ThreadLocal需要注意什么？
+
+- 由于ThreadLocalMap是Thread对象的成员，当对应线程运行结束销毁时，自然这个ThreadLocalMap类型的成员也会被回收。
+- 但如果想依赖上面这点来避免内存泄漏，就大错特错了。因为线程池里的线程为了复用线程，一般不会直接销毁掉完成了任务的线程，以下一次复用。
+- 所以，线程使用完毕ThreadLocal后，主动调用`remove`来避免内存泄漏，才是万全之策。
+- 另外，线程池中的线程使用完毕ThreadLocal后，不主动调用`remove`，还可能造成：get值时，get到上一个任务set的值，直接造成程序错误。
+
+### 使用ThreadLocal有什么好处？（可以解决什么问题？）
+
+- 相比`synchronized`使用锁从而使得多个线程可以安全的访问同一个共享变量，现在可以直接转换思路，让线程使用自己的私有变量，直接避免了并发访问的问题。
+- 当一个数据需要传递给某个方法，而这个方法处于方法调用链的中间部分，那么如果采用加参数传递的方式，势必为影响到耦合性。而如果使用ThreadLocal来为线程保存这个数据，就避免了这个问题，而且对于这个线程，它在任何时候都可以取到这个值。
+
