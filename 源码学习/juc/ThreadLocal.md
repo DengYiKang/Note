@@ -39,6 +39,9 @@ private static final int HASH_INCREMENT = 0x61c88647;
 private static int nextHashCode() {
         return nextHashCode.getAndAdd(HASH_INCREMENT);
 }
+private void setThreshold(int len) {
+	threshold = len * 2 / 3;
+}
 ```
 
 ### initialValue
@@ -309,10 +312,6 @@ private int expungeStaleEntry(int staleSlot) {
 ```java
 private void set(ThreadLocal<?> key, Object value) {
 
-    // We don't use a fast path as with get() because it is at
-    // least as common to use set() to create new entries as
-    // it is to replace existing ones, in which case, a fast
-    // path would fail more often than not.
 
     Entry[] tab = table;
     int len = tab.length;
@@ -323,11 +322,14 @@ private void set(ThreadLocal<?> key, Object value) {
          e = tab[i = nextIndex(i, len)]) {
         ThreadLocal<?> k = e.get();
 
+        //找到了，直接替换新的值
         if (k == key) {
             e.value = value;
             return;
         }
 
+        //如果发现了一个staleSlot，那么进行replaceStaleEntry
+        //replaceStaleEntry在进行set的同时对
         if (k == null) {
             replaceStaleEntry(key, value, i);
             return;
@@ -336,7 +338,147 @@ private void set(ThreadLocal<?> key, Object value) {
 
     tab[i] = new Entry(key, value);
     int sz = ++size;
+    //如果没有清理掉一个stale entry，且entry使用的数量超出阈值了，那么需要rehash（扩容）
     if (!cleanSomeSlots(i, sz) && sz >= threshold)
         rehash();
 }
 ```
+
+```java
+private void replaceStaleEntry(ThreadLocal<?> key, Object value,
+                               int staleSlot) {
+    Entry[] tab = table;
+    int len = tab.length;
+    Entry e;
+
+    //slotToExpunge标记包含staleSlot在内的非null连续段中的第一个stale slot（不包括staleSlot本身）
+    //搜索完成后，如果slotToExpunge==staleSlot，那么这个连续段只有staleSlot一个stale entry，就不需要清理了
+    //（最终（k，v）肯定在staleSlot对应的位置上的）
+    int slotToExpunge = staleSlot;
+    //从staleSlot向前搜索
+    for (int i = prevIndex(staleSlot, len);
+         (e = tab[i]) != null;
+         i = prevIndex(i, len))
+        if (e.get() == null)
+            slotToExpunge = i;
+
+    //从staleSlot向后搜索
+    //完成以下任务：
+    //1、维护slotToExpunge变量
+    //2、如果在staleSlot往后的非null连续段找到key的位置i，那么将这个key对应的entry跟staleSlot交换，之后清理
+    //下标i往后的非null连续段(因为被交换过了，所以这时下标i的位置是stale entry)
+    //3、如果没有找到，那么将（k，v）放在staleSlot的位置上，然后判断是否需要清理(slotToExpunge==staleSlot)
+    for (int i = nextIndex(staleSlot, len);
+         (e = tab[i]) != null;
+         i = nextIndex(i, len)) {
+        ThreadLocal<?> k = e.get();
+		//找到了，那么就将当前位置的entry与staleSlot交换，并对value进行更新
+        if (k == key) {
+            e.value = value;
+
+            tab[i] = tab[staleSlot];
+            tab[staleSlot] = e;
+
+            //如果当前还没有搜索到除了staleSlot之外的stale entry，那么将slotToExpunge设置为i（交换后i位置是stale的）
+            //如果slotToExpunge != staleSlot，之前肯定搜索到了stale entry，不用更新slotToExpunge
+            if (slotToExpunge == staleSlot)
+                slotToExpunge = i;
+            //清理
+            cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+            return;
+        }
+
+		//找到了除staleSlot的第一个stale entry
+        if (k == null && slotToExpunge == staleSlot)
+            slotToExpunge = i;
+    }
+
+    //如果没有找到key，那么直接把（k，v）放在staleSlot对应的位置
+    tab[staleSlot].value = null;
+    tab[staleSlot] = new Entry(key, value);
+
+    //如果有其他的stale entry在该连续段里，那么进行清理
+    if (slotToExpunge != staleSlot)
+        cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+}
+```
+
+```java
+//从i开始清理
+//搜索长度为log2(n)
+//每次碰到一个stale entry，那么调用expungeStaleEntry，将stale entry所在的连续段进行清理，然后重置搜索长度
+//返回是否执行了清理
+private boolean cleanSomeSlots(int i, int n) {
+    boolean removed = false;
+    Entry[] tab = table;
+    int len = tab.length;
+    do {
+        i = nextIndex(i, len);
+        Entry e = tab[i];
+        if (e != null && e.get() == null) {
+            n = len;
+            removed = true;
+            i = expungeStaleEntry(i);
+        }
+    } while ( (n >>>= 1) != 0);
+    return removed;
+}
+```
+
+```java
+private void rehash() {
+    //全面清理
+    expungeStaleEntries();
+
+    //不等式右侧=len/2
+    //使用的量大于1/2时进行resize
+    if (size >= threshold - threshold / 4)
+        resize();
+}
+//全面清理，从头到位expungeStaleEntry
+private void expungeStaleEntries() {
+    Entry[] tab = table;
+    int len = tab.length;
+    for (int j = 0; j < len; j++) {
+        Entry e = tab[j];
+        if (e != null && e.get() == null)
+            expungeStaleEntry(j);
+    }
+}
+//两倍扩容，重新hash（因为与运算的对象是len的表达式，会变动）
+private void resize() {
+    Entry[] oldTab = table;
+    int oldLen = oldTab.length;
+    int newLen = oldLen * 2;
+    Entry[] newTab = new Entry[newLen];
+    int count = 0;
+
+    for (int j = 0; j < oldLen; ++j) {
+        Entry e = oldTab[j];
+        if (e != null) {
+            ThreadLocal<?> k = e.get();
+            if (k == null) {
+                e.value = null; // Help the GC
+            } else {
+                int h = k.threadLocalHashCode & (newLen - 1);
+                while (newTab[h] != null)
+                    h = nextIndex(h, newLen);
+                newTab[h] = e;
+                count++;
+            }
+        }
+    }
+
+    setThreshold(newLen);
+    size = count;
+    table = newTab;
+}
+```
+
+### 总结
+
++ ThreadLocalMap是Thread类的成员变量，在ThreadLocal类中定义，由ThreadLocal类提供包装的set/get方法。
++ Thread通过ThreadLocal实例来访问对应的本地变量，本地变量由Thread和ThreadLocal来对应。
++ 第一次调用get时，如果map中没有对应的key，那么将会调用`initialValue`。理论上`initialValue`只会被调用一次，除非使用`remove`方法。
++ ThreadLocalMap是核心内部类，在它提供的set/get方法中，每次搜索到stale entry，都会对它为首的连续段进行清理。这种清理机制能保证待搜索的位置一定在以hash值下标为首的连续段中，提高了搜索效率。
++ 当所用量大于1/2时，将进行扩容。
