@@ -6,7 +6,7 @@ CountDownLatch比较简单，这里直接贴源码：
 //共享锁,一次性，state减到0就不能用了
 //一开始看到await方法以为是调用了AQS的条件队列的相关方法，但其实只调用了同步队列的相关方法
 //需要阻塞的对象调用await
-//起触发器的作用的对象调用release
+//起触发器的作用的对象调用countDown
 public class CountDownLatch {
     //AQS的子类
     private static final class Sync extends AbstractQueuedSynchronizer {
