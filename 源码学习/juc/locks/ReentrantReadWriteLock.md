@@ -1,5 +1,9 @@
 # ReentrantReadWriteLock
 
+[TOC]
+
+
+
 ## 源码
 
 ### 成员
@@ -377,7 +381,9 @@ final boolean tryReadLock() {
 
 ## 总结
 
-+ ReentrantReadWriteLock内部定义了两个锁，分别是读锁和写锁
++ `ReentrantReadWriteLock`内部定义了两个锁，分别是读锁和写锁
++ AQS子类sync定义了`HoldCounter`类来存储拥有读锁数量和对应线程的id，将它与`ThreadLocal`结合作为各线程的私有变量
++ AQS子类sync维护了`cachedHoldCounter`、`firstReader`和`firstReaderHoldCount`来作为缓存，提高速度
 + 读锁和写锁共用一个AQS队列，state的高16位为读锁的拥有量，state的低16位为写锁的拥有量
 + 一个线程具备获取写锁的条件：
 	+ 读锁为0
