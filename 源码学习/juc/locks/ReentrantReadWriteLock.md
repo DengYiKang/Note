@@ -370,6 +370,41 @@ final boolean tryReadLock() {
 }
 ```
 
+### writerShouldBlock和readerShouldBlock
+
+#### 非公平
+
+```java
+final boolean writerShouldBlock() {
+    return false; // writers can always barge
+}
+//注意，非公平模式下，因为读的次数远比写的次数多，那么写进程可能会饥饿
+//因此，这里不能直接返回false。如果head后继是写进程，那么就把新的读进程阻塞（但是重入的读进程不受影响）
+final boolean readerShouldBlock() {
+    return apparentlyFirstQueuedIsExclusive();
+}
+
+//当前head后继是否为独占模式的node（写进程）
+final boolean apparentlyFirstQueuedIsExclusive() {
+    Node h, s;
+    return (h = head) != null &&
+        (s = h.next)  != null &&
+        !s.isShared()         &&
+        s.thread != null;
+}
+```
+
+#### 公平
+
+```java
+final boolean writerShouldBlock() {
+    return hasQueuedPredecessors();
+}
+final boolean readerShouldBlock() {
+    return hasQueuedPredecessors();
+}
+```
+
 ## 锁降级和重入
 
 一个线程持有写锁，可以继续获得读锁。一个线程同时拥有写锁和读锁，如果释放了写锁，那么就称写锁降级为了读锁。

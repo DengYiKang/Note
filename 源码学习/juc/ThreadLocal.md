@@ -247,7 +247,7 @@ private Entry getEntry(ThreadLocal<?> key) {
         //线性探测，同时整理entry数组
         return getEntryAfterMiss(key, i, e);
 }
-//在第一次miss后，线性探测，同时整理table
+//在第一次miss后，线性探测，探测中遇到stale entry会整理table
 private Entry getEntryAfterMiss(ThreadLocal<?> key, int i, Entry e) {
     Entry[] tab = table;
     int len = tab.length;
@@ -331,7 +331,7 @@ private void set(ThreadLocal<?> key, Object value) {
         }
 
         //如果发现了一个staleSlot，那么进行replaceStaleEntry
-        //replaceStaleEntry在进行set的同时对
+        //replaceStaleEntry在进行set的同时对包含下标i在内的连续段进行清理
         if (k == null) {
             replaceStaleEntry(key, value, i);
             return;
@@ -341,12 +341,14 @@ private void set(ThreadLocal<?> key, Object value) {
     tab[i] = new Entry(key, value);
     int sz = ++size;
     //如果没有清理掉一个stale entry，且entry使用的数量超出阈值了，那么需要rehash（扩容）
+    //cleanSomeSlots返回true，意味着至少还能再插入一个，就不rehash了
     if (!cleanSomeSlots(i, sz) && sz >= threshold)
         rehash();
 }
 ```
 
 ```java
+//进行set的同时，对包含在下标i在内的连续段进行清理
 private void replaceStaleEntry(ThreadLocal<?> key, Object value,
                                int staleSlot) {
     Entry[] tab = table;
@@ -406,10 +408,10 @@ private void replaceStaleEntry(ThreadLocal<?> key, Object value,
 ```
 
 ```java
-//从i开始清理
+//从下标i开始清理
 //搜索长度为log2(n)
 //每次碰到一个stale entry，那么调用expungeStaleEntry，将stale entry所在的连续段进行清理，然后重置搜索长度
-//返回是否执行了清理
+//返回值表示是否执行了清理
 private boolean cleanSomeSlots(int i, int n) {
     boolean removed = false;
     Entry[] tab = table;
@@ -437,7 +439,7 @@ private void rehash() {
     if (size >= threshold - threshold / 4)
         resize();
 }
-//全面清理，从头到位expungeStaleEntry
+//全面清理，从头到尾进行expungeStaleEntry
 private void expungeStaleEntries() {
     Entry[] tab = table;
     int len = tab.length;
@@ -447,7 +449,7 @@ private void expungeStaleEntries() {
             expungeStaleEntry(j);
     }
 }
-//两倍扩容，重新hash（因为与运算的对象是len的表达式，会变动）
+//两倍扩容，重新hash（因为与运算的对象是len的表达式，会变动，需要与新len进行与运算）
 private void resize() {
     Entry[] oldTab = table;
     int oldLen = oldTab.length;
@@ -482,7 +484,7 @@ private void resize() {
 + ThreadLocalMap是Thread类的成员变量，在ThreadLocal类中定义，由ThreadLocal类提供包装的set/get方法。
 + Thread通过ThreadLocal实例来访问对应的本地变量，本地变量由Thread和ThreadLocal来对应。
 + 第一次调用get时，如果map中没有对应的key，那么将会调用`initialValue`。理论上`initialValue`只会被调用一次，除非使用`remove`方法。
-+ ThreadLocalMap是核心内部类，在它提供的set/get方法中，每次搜索到stale entry，都会对它为首的连续段进行清理。这种清理机制能保证待搜索的位置一定在以hash值下标为首的连续段中，提高了搜索效率。
++ ThreadLocalMap是核心内部类，在它提供的get/set方法中，每次搜索到stale entry，都会对它为首/包含它的连续段进行清理（get是清理以它为首的连续段，set是清理包含它的连续段）。这种清理机制能保证待搜索的位置一定在以hash值下标为首的连续段中，提高了搜索效率。
 + 当所用量大于1/2时，将进行扩容。
 
 ## 面试问题
