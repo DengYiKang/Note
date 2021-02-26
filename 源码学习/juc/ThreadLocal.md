@@ -516,7 +516,8 @@ private void resize() {
 ### 为什么Entry继承了WeakReference？
 
 - 首先，WeakReference的父类成员referent，如果referent指向的对象没有强引用指着它，那么referent指向的对象就可能被回收，从而使得referent引用为null。
-- 而referent成员是作为key来使用的，这样key为null的entry（称为stale entry）在get/set操作中**可能**会被间接清理掉。
+- 如果Entry不继承WeakReference，那么仅仅将ThreadLocal实例设为null并不会使对应的key对应的entry被gc掉，因为各个线程的ThreadLocalMap还引用了这个key的entry，因此在各个线程销毁前，这个entry是不会gc的。
+- 而referent成员是作为key来使用的，这样使用者将不再用的ThreadLocal实例赋值null后，由于ThreadLocal的实例作为key，因此这个ThreadLocal被gc后，所有的线程的ThreadLocalMap中的这个key会变成null，而key为null的entry（称为stale entry）在get/set操作中**可能**会被间接清理掉。
 - 所以，继承WeakReference的原因是为了能更快回收资源，但前提是：
     - 没有强引用指向ThreadLocal对象。
     - 且jvm执行了gc，回收了ThreadLocal对象，出现了stale entry。
