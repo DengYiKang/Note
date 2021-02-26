@@ -1,5 +1,7 @@
 # Reference
 
+[TOC]
+
 ## 简介
 
 Java中有四种引用，这四种引用从高到低分别为：
@@ -151,9 +153,173 @@ Java中有四种引用，这四种引用从高到低分别为：
 
 ### Reference
 
+#### 分析
+
 Reference是SoftReference、WeakReference的基类。
 
 一个Reference实例有四种状态：
 
 + Active：
+
+	新创建的实例为Active的。可以转换成Pending状态或者Inactive状态。如果注册了队列，那么将该实例加入pending队列，并转换成Pending状态，否则直接转换成Inactive状态。
+
++ Pending:
+
+	在pending队列中的实例的状态。当前实例等待入队（注意这个入队的队列不是pending队列，是指注册队列）。
+
++ Enqueued:
+
+	在注册队列中。当被从注册队列移除时，将转成Inactive状态。
+
++ Inactive:
+
+	当一个实例成Inactive状态后，状态将永不可变。
+
+```java
+private T referent;         /* Treated specially by GC */
+
+//注册队列
+volatile ReferenceQueue<? super T> queue;
+
+/* When active:   NULL
+ *     pending:   this
+ *    Enqueued:   next reference in queue (or this if last)
+ *    Inactive:   this
+ *  因此可以通过next域来判断当前实例是否为active或者Enqueued
+ */
+@SuppressWarnings("rawtypes")
+volatile Reference next;
+
+/* When active:   next element in a discovered reference list maintained by GC (or this if last)
+ *     pending:   next element in the pending list (or null if last)
+ *   otherwise:   NULL
+ */
+transient private Reference<T> discovered;  /* used by VM */
+```
+
+可以注意到，遍历active与pending的实例是有vm通过discovered域来搜索的；遍历注册队列的实例是根据next域来搜索的。
+
+```java
+/*
+* 每次回收都需要获取锁
+*/
+static private class Lock { }
+private static Lock lock = new Lock();
+```
+
+```java
+//注意这是类变量，所有在pending状态的实例都可以由该变量来搜索到
+//该变量类似head结点，而next就是discovered域
+private static Reference<Object> pending = null;
+```
+
+```java
+Reference(T referent) {
+    this(referent, null);
+}
+
+Reference(T referent, ReferenceQueue<? super T> queue) {
+    this.referent = referent;
+    this.queue = (queue == null) ? ReferenceQueue.NULL : queue;
+}
+```
+
+ReferenceQueue类有两个类变量：
+
+```java
+static ReferenceQueue<Object> NULL = new Null<>();
+static ReferenceQueue<Object> ENQUEUED = new Null<>();
+```
+
+NULL表示没有注册队列，ENQUEUED表示已经入队。这两个变量作为Reference类的成员变量queue的可选值。当Reference类实例入队注册队列时，queue将会赋值为ENQUEUED。
+
+```java
+//高优先级线程，处理pending状态的实例，将它们由cleaner处理或者入队注册队列
+private static class ReferenceHandler extends Thread {
+
+    private static void ensureClassInitialized(Class<?> clazz) {
+        try {
+            Class.forName(clazz.getName(), true, clazz.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            throw (Error) new NoClassDefFoundError(e.getMessage()).initCause(e);
+        }
+    }
+
+    static {
+        // pre-load and initialize InterruptedException and Cleaner classes
+        // so that we don't get into trouble later in the run loop if there's
+        // memory shortage while loading/initializing them lazily.
+        ensureClassInitialized(InterruptedException.class);
+        ensureClassInitialized(Cleaner.class);
+    }
+
+    ReferenceHandler(ThreadGroup g, String name) {
+        super(g, name);
+    }
+
+    public void run() {
+        while (true) {
+            tryHandlePending(true);
+        }
+    }
+}
+
+//处理pending队列
+//一次处理一个
+static boolean tryHandlePending(boolean waitForNotify) {
+    Reference<Object> r;
+    Cleaner c;
+    try {
+        synchronized (lock) {
+            if (pending != null) {
+                r = pending;
+                //instanceof可能会导致oom，因此要在unlink之前执行
+                //否则unlink后如果出现了oom，则无法回复
+                c = r instanceof Cleaner ? (Cleaner) r : null;
+                //unlink
+                pending = r.discovered;
+                r.discovered = null;
+            } else {
+                //wait可能导致oom
+                //因为它可能会尝试产生异常对象
+                if (waitForNotify) {
+                    lock.wait();
+                }
+                // retry if waited
+                return waitForNotify;
+            }
+        }
+    } catch (OutOfMemoryError x) {
+        // Give other threads CPU time so they hopefully drop some live references
+        // and GC reclaims some space.
+        // Also prevent CPU intensive spinning in case 'r instanceof Cleaner' above
+        // persistently throws OOME for some time...
+        Thread.yield();
+        // retry
+        return true;
+    } catch (InterruptedException x) {
+        // retry
+        return true;
+    }
+
+    // Fast path for cleaners
+    if (c != null) {
+        c.clean();
+        return true;
+    }
+
+    ReferenceQueue<? super Object> q = r.queue;
+    //如果注册了队列，那么入队
+    if (q != ReferenceQueue.NULL) q.enqueue(r);
+    return true;
+}
+```
+
+#### 总结
+
++ 一个Reference实例有四种状态：Active、Pending、Enqueued、Inactived
++ Reference的成员变量queue保存注册队列的引用。如果无，则为ReferenceQueue.NULL，如果已经入队，则为ReferenceQueue.ENQUEUED。
++ VM根据discovered域来搜索active实例
++ ReferenceHandler根据discovered域来搜索pending实例
++ ReferenceQueue根据next域来搜索enqueued实例
 
