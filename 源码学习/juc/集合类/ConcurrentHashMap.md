@@ -1152,14 +1152,14 @@ public V computeIfAbsent(K key, Function<? super K, ? extends V> mappingFunction
 
 ### 总结
 
-+ ConcurrentHashMap的基础操作还是和HashMap一样的，比如table取下标使用& (n-1)而不是% n，哈希值需要高位扰动，哈希桶分离分为低桶和高桶。
-+ 对于数据结构为红黑树的节点，TreeBin封装了真正的红黑色节点TreeNode，TreeBin起到一个dummy node的作用，避免了红黑树平衡造成的table槽位成员发生变化。
-+ ConcurrentHashMap不允许key或者value为null。
-+ 对于所有的写操作（插入操作、插入后的树化操作、哈希桶分离操作…），在写操作之前，都需要对哈希桶的第一个节点加锁。这是有效的，因为在链表中，节点总是添加到末尾，头节点不会变，直到它被删除或哈希桶分离。红黑树的TreeBin也是总是不变的，除非哈希桶分离。
-+ 计数器的任务，交给了baseCount和counterCells，它们的实现类似于LongAdder，这比使用AtomicLong用作计数好多了。因为很大程度减小了因CAS失败而导致的自旋。
-+ transfer是扩容的真正实现，这一方法被设计成可以被多个线程并发执行，以加快扩容的完成。使用ForwardingNode来连接旧table的节点和新table。
-+ 提供了一个Traverser用作只读迭代器，它在遇到ForwardingNode时进行table跳转，然后在新table上读取相应的低桶和高桶。
++ `ConcurrentHashMap`的基础操作还是和`HashMap`一样的，比如table取下标使用`& (n-1)`而不是`% n`，哈希值需要高位扰动，哈希桶分离分为低桶和高桶。
++ 对于数据结构为红黑树的节点，`TreeBin`封装了真正的红黑色节点`TreeNode`，`TreeBin`起到一个dummy node的作用，避免了红黑树平衡造成的table槽位成员发生变化。
++ `ConcurrentHashMap`不允许key或者value为null。
++ 对于所有的写操作（插入操作、插入后的树化操作、哈希桶分离操作…），在写操作之前，都需要对哈希桶的第一个节点加锁。这是有效的，因为在链表中，节点总是添加到末尾，头节点不会变，直到它被删除或哈希桶分离。红黑树的`TreeBin`也是总是不变的，除非哈希桶分离。
++ 计数器的任务，交给了`baseCount`和`counterCells`，它们的实现类似于`LongAdder`，这比使用`AtomicLong`用作计数好多了。因为很大程度减小了因CAS失败而导致的自旋。
++ `transfer`是扩容的真正实现，这一方法被设计成可以被多个线程并发执行，以加快扩容的完成。使用`ForwardingNode`来连接旧table的节点和新table。
++ 提供了一个`Traverser`用作只读迭代器，它在遇到`ForwardingNode`时进行table跳转，然后在新table上读取相应的低桶和高桶。
 + 写操作的加锁粒度是每个哈希桶。
 	+ 好处是读写操作可以最大程序并发执行，这样效率最高。
-	+ 坏处是读写操作都是弱一致性，比如size()返回的大小可能已经与真实大小不一样，比如clear()调用返回后Map中却拥有着元素。
+	+ 坏处是读写操作都是弱一致性，比如`size()`返回的大小可能已经与真实大小不一样，比如`clear()`调用返回后Map中却拥有着元素。
 		
