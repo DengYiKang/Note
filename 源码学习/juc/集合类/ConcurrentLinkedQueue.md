@@ -9,7 +9,7 @@
 + 既然是队列，自然有head和tail分别指向first live node和last node。
 	+ live node指的是item不为null的节点，因为item为null代表节点逻辑上被删除。first live node就是指队列中第一个live node。
 
-+ 按照惯性思维，head和tail可能需要时刻保持指向正确，但在`ConcurrentLinkedQueue`却不是这样，它反而允许head和tail偏离first live node和last node。因为常用做法需要两个`volatile`写才能完成（比如入队时，首先需要CAS修改last node的`next`指针，然后需要CAS修改tail），但CAS操作都是独立的，没法将两个CAS操作绑定在一起，所以干脆抛弃惯性思维，然后允许head和tail处于不一致的状态。另一个方面，CAS操作是一种很耗资源的操作，应该尽量减少这种操作尤其是在非阻塞算法中，所以`ConcurrentLinkedQueue`的做法是：检测到head和tail偏离了一定程度后，才修正head和tail。
++ 按照惯性思维，head和tail可能需要时刻保持指向正确，但在`ConcurrentLinkedQueue`却不是这样，它反而允许head和tail偏离first live node和last node。因为常用做法需要两个`volatile`写才能完成（比如入队时，首先需要CAS修改last node的`next`指针，然后需要CAS修改`tail`），但CAS操作都是独立的，没法将两个CAS操作绑定在一起，所以干脆抛弃惯性思维，然后允许head和tail处于不一致的状态。另一个方面，CAS操作是一种很耗资源的操作，应该尽量减少这种操作尤其是在非阻塞算法中，所以`ConcurrentLinkedQueue`的做法是：检测到head和tail偏离了一定程度后，才修正head和tail。
 	+ 当偏离程度达到2时（比如tail距离last node为2，形如... tail ⇒ 某节点 ⇒ last node），才会进行修正。但注意，这个修正只是一次CAS尝试，不管结果是成功还是失败。偏离程度在注释中原称为松弛阀值slack threshold。
 	+ 如下图，允许head偏离first live node、tail偏离last node。
 
