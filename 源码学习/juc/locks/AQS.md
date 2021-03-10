@@ -555,7 +555,7 @@ public class ConditionObject implements Condition, java.io.Serializable {
 + 一个结点刚出队同步队列（指代表线程不在同步队列中的任何结点上，因为它被保存到`exclusiveOwnerThread`变量里了），说明这个线程刚获得了锁。
 + 如果一个结点刚入队条件队列，说明线程此时有锁，但即将释放（await）。
 + 如果一个结点刚出队条件队列，此时线程前往同步队列，此时没有获得锁。
-+ 同步队列的结点的初始状态为0，条件队列的结点的初始状态为CONDITION
++ 同步队列的结点的初始状态为0，条件队列的结点的初始状态为CONDITION。
 
 #### await
 
