@@ -301,7 +301,7 @@ sizeCtl的低16bit用作线程扩容的许可（即记录已经发放的许可�
 每一个线程来扩容时都需要获得许可：
 
 - 第一个开始扩容的线程，进入`transfer`前需要获得2个许可。实际动作为：sizeCtl + 2。
-- 之后开始扩容的线程，进入`transfer`前需要获得1个许可。实际动作为：izeCtl + 1。
+- 之后开始扩容的线程，进入`transfer`前需要获得1个许可。实际动作为：sizeCtl + 1。
 
 所有的线程执行为`transfer`任务，归还许可时，`sizeCtl`的低16bit为1。这个数值可以用作扩容结束前的中间状态。当最后一个线程归回许可，检测到`sizeCtl`的低16bit为1时，将会从头到尾检查一遍每个哈希桶是否都完成了转移。
 
@@ -598,7 +598,7 @@ collide的作用跟wasUncontended一样，判断是否需要再尝试新的探�
 
 #### cellsBusy
 
-cellsBusy+CAS作为乐观锁，对counterCells修改时需要获取该锁。
+cellsBusy+CAS作为乐观锁，对counterCells上的空slot创建时需要获取该锁。
 
 #### 不用担心把x加到旧的数组成员上去
 

@@ -1060,7 +1060,7 @@ public interface RejectedExecutionHandler {
 }
 ```
 
-- 因为是无界队列，所以`maximumPoolSize`不会起到作用，工作线程不会超过`corePoolSize`。就算不考虑前面一点，`corePoolSize`与`maximumPoolSize`相等，线程数量也不会超过`nThreads`的。
+- 因为是无界队列，所以`corePoolSize`不会起到作用，工作线程不会超过`corePoolSize`。就算不考虑前面一点，`corePoolSize`与`maximumPoolSize`相等，线程数量也不会超过`nThreads`的。
 - 这意味着线程数量会一直增长到nThreads，数量达到nThreads后不会再增加，直到线程池关闭，这nThreads个线程都会一直保持运行。
 - 时间参数不会起到作用，因为这只对核心数量以外的线程起作用。
 - 但`newFixedThreadPool`返回的线程池可以设置改变其线程池参数。
