@@ -1,0 +1,39 @@
+# Next Greater Node In Linked List
+
+### 问题
+
+给一个链表，对每个位置的数，找到下一个比他更大的数，这个下一个指的是离它最近的（只能往next方向找）。
+
+### 解决方案：stack，时间复杂度$O(n)$
+
+从右边开始找。
+
+假设当前数为A[i]，后面的数段为A[i+1]~A[n]，考虑如何维护作为A[i]的候选集（即与A[i]对应的答案在候选集里）。对于候选集，如果有p>q，且A[p]<A[q]，即大的数在小的数之前，那么小的数直接可以从候选集里丢弃。否则必须把它们都加入候选集。又因为需要选择与A[i]近的大数，因此优先将A[i]与候选集里的前面位置的数进行比较，如果A[i]大，那么被比较的树从候选集剔除。这样的性质可以用栈来实现。
+
+```java
+class Solution {
+        public int[] nextLargerNodes(ListNode head) {
+                Stack<Integer> stack=new Stack<>();
+                ListNode node=head;
+                while(node!=null){
+                        stack.push(node.val);
+                        node=node.next;
+                }
+                Stack<Integer> vals=new Stack<>();
+                int[] ans=new int[stack.size()];
+                int tail=ans.length-1;
+                while(!stack.isEmpty()){
+                        int cur=stack.pop();
+                        ans[tail]=0;
+                        while(!vals.isEmpty()&&vals.peek()<=cur){
+                                vals.pop();
+                        }
+                        if(!vals.isEmpty()) ans[tail]=vals.peek();
+                        vals.push(cur);
+                        tail--;
+                }
+                return ans;
+        }
+}
+```
+
