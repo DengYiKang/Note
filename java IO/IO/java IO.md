@@ -297,3 +297,172 @@ public int read();//从输入流读取一个字符。
 public int read(char[] cbuf);//从输入流中读取一些字符，并将它们存储到字符数组 cbuf中
 ```
 
+##### FileReader
+
+`java.io.FileReader`类是读取字符文件的便利类。构造时使用系统默认的字符编码和默认字节缓冲区。
+
+```java
+FileReader(File file);//创建一个新的 FileReader ，给定要读取的File对象。
+FileReader(String fileName);//创建一个新的 FileReader ，给定要读取的文件的字符串名称。
+```
+
+#### 字符输出流（Writer）
+
+`java.io.Writer`抽象类是**字符输出流**的所有类的**超类**（父类），将指定的字符信息写出到目的地。
+
+```java
+void write(int c);// 写入单个字符。
+void write(char[] cbuf);//写入字符数组。
+abstract void write(char[] cbuf, int off, int len);//写入字符数组的某一部分,off数组的开始索引,len写的字符个数。
+void write(String str);//写入字符串。
+void write(String str, int off, int len);// 写入字符串的某一部分,off字符串的开始索引,len写的字符个数。
+void flush();//刷新该流的缓冲。
+void close();// 关闭此流，但要先刷新它。
+```
+
+##### FileWriter
+
+```java
+FileWriter(File file);//创建一个新的 FileWriter，给定要读取的File对象。
+FileWriter(String fileName);//创建一个新的 FileWriter，给定要读取的文件的名称
+```
+
+#### FileReader和FileWriter类完成文本文件复制
+
+```java
+public class CopyFile {
+    public static void main(String[] args) throws IOException {
+        //创建输入流对象
+        FileReader fr=new FileReader("F:\\新建文件夹\\aa.txt");//文件不存在会抛出java.io.FileNotFoundException
+        //创建输出流对象
+        FileWriter fw=new FileWriter("C:\\copyaa.txt");
+        /*创建输出流做的工作：
+         *      1、调用系统资源创建了一个文件
+         *      2、创建输出流对象
+         *      3、把输出流对象指向文件        
+         * */
+        //文本文件复制，一次读一个字符
+        copyMethod1(fr, fw);
+        //文本文件复制，一次读一个字符数组
+        copyMethod2(fr, fw);
+        
+        fr.close();
+        fw.close();
+    }
+ 
+    public static void copyMethod1(FileReader fr, FileWriter fw) throws IOException {
+        int ch;
+        while((ch=fr.read())!=-1) {//读数据
+            fw.write(ch);//写数据
+        }
+        fw.flush();
+    }
+ 
+    public static void copyMethod2(FileReader fr, FileWriter fw) throws IOException {
+        char chs[]=new char[1024];
+        int len=0;
+        while((len=fr.read(chs))!=-1) {//读数据
+            fw.write(chs,0,len);//写数据
+        }
+        fw.flush();
+    }
+}
+```
+
+### 字节缓冲流
+
+```java
+public BufferedInputStream(InputStream in);//创建一个新的缓冲输入流，注意参数类型为InputStream。
+public BufferedOutputStream(OutputStream out);//创建一个新的缓冲输出流，注意参数类型为OutputStream。
+```
+
+```java
+public class BufferedDemo {
+    public static void main(String[] args) throws FileNotFoundException {
+        // 创建流对象
+        try (
+         BufferedInputStream bis = new BufferedInputStream(new FileInputStream("py.exe"));
+         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream("copyPy.exe"));
+        ){
+            // 读写数据
+            int len;
+            byte[] bytes = new byte[8*1024];
+            while ((len = bis.read(bytes)) != -1) {
+                bos.write(bytes, 0 , len);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### 字符缓冲流
+
+```java
+public BufferedReader(Reader in);//创建一个新的缓冲输入流，注意参数类型为Reader。
+public BufferedWriter(Writer out);//创建一个新的缓冲输出流，注意参数类型为Writer。
+```
+
+#### 字符缓冲流特有的方法
+
+- BufferedReader：`public String readLine()`: **读一行数据**。 读取到最后返回null
+- BufferedWriter：`public void newLine()`: **换行**,由系统属性定义符号。
+
+### 转换流
+
+#### 编码问题导致乱码
+
+在java开发工具IDEA中，使用`FileReader` 读取项目中的文本文件。由于IDEA的设置，都是默认的`UTF-8`编码，所以没有任何问题。但是，当读取Windows系统中创建的文本文件时，由于Windows系统的默认是GBK编码，就会出现乱码。
+
+#### InputStreamReader
+
+转换流`java.io.InputStreamReader`，是`Reader`的子类，读取字节，并使用指定的字符集将其解码为字符。它的字符集可以由名称指定，也可以接受平台的默认字符集。
+
+```java
+InputStreamReader(InputStream in);//创建一个使用默认字符集的字符流。
+InputStreamReader(InputStream in, String charsetName);//创建一个指定字符集的字符流。
+```
+
+#### OutputStreamWriter
+
+转换流`java.io.OutputStreamWriter` ，是Writer的子类，使用指定的字符集将字符编码为字节。它的字符集可以由名称指定，也可以接受平台的默认字符集。
+
+```java
+OutputStreamWriter(OutputStream in);//创建一个使用默认字符集的字符流。
+OutputStreamWriter(OutputStream in, String charsetName);//创建一个指定字符集的字符流。
+```
+
+为了达到**最高效率**，可以考虑在 `BufferedReader` 内包装 `InputStreamReader`：
+
+```java
+BufferedReader in = new BufferedReader(new InputStreamReader(System.in))；
+```
+
+### 序列化流
+
+Java 提供了一种对象**序列化**的机制。用一个字节序列可以表示一个对象，该字节序列包含该`对象的数据`、`对象的类型`和`对象中存储的属性`等信息。字节序列写出到文件之后，相当于文件中**持久保存**了一个对象的信息。
+
+反之，该字节序列还可以从文件中读取回来，重构对象，对它进行**反序列化**。`对象的数据`、`对象的类型`和`对象中存储的数据`信息，都可以用来在内存中创建对象。
+
+![www.wityx.com](../../pic/64.png)
+
+#### ObjectOutputStream
+
+`java.io.ObjectOutputStream` 类，将Java对象的原始数据类型写出到文件,实现对象的持久存储。
+
+```java
+public ObjectOutputStream(OutputStream out)://创建一个指定OutputStream的ObjectOutputStream。
+public final void writeObject (Object obj);//将指定的对象写出。
+```
+
+#### ObjectInputStream
+
+ObjectInputStream反序列化流，将之前使用ObjectOutputStream序列化的原始数据恢复为对象。
+
+```java
+public ObjectInputStream(InputStream in);//创建一个指定InputStream的ObjectInputStream。
+public final Object readObject ();//读取一个对象。
+```
+
+> 另外，当JVM反序列化对象时，能找到class文件，但是class文件在序列化对象之后发生了修改，那么反序列化操作也会失败，该类的序列版本号与从流中读取的类描述符的版本号不匹配（serialVersionUID的作用）。
