@@ -657,6 +657,152 @@ jdbc.password=159753
 </web-app>
 ```
 
+### pom.xml
+
+```xml
+<properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+    <spring.version>5.1.8.RELEASE</spring.version>
+</properties>
+
+<dependencies>
+    <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.12</version>
+        <scope>test</scope>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/ch.qos.logback/logback-classic -->
+    <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>1.2.3</version>
+    </dependency>
+    <!-- Spring -->
+    <!-- 1)包含Spring 框架基本的核心工具类。Spring 其它组件要都要使用到这个包里的类，是其它组件的基本核心 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 2)这个jar 文件是所有应用都要用到的，它包含访问配置文件、创建和管理bean 以及进行Inversion of Control
+        / Dependency Injection（IoC/DI）操作相关的所有类。如果应用只需基本的IoC/DI 支持，引入spring-core.jar
+        及spring-beans.jar 文件就可以了。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-beans</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 3)这个jar 文件为Spring 核心提供了大量扩展。可以找到使用Spring ApplicationContext特性时所需的全部类，JDNI
+        所需的全部类，instrumentation组件以及校验Validation 方面的相关类。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-context</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 4) 这个jar 文件包含对Spring 对JDBC 数据访问进行封装的所有类。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-jdbc</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 5) 为JDBC、Hibernate、JDO、JPA等提供的一致的声明式和编程式事务管理。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-tx</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 6)Spring web 包含Web应用开发时，用到Spring框架时所需的核心类，包括自动载入WebApplicationContext特性的类、Struts与JSF集成类、文件上传的支持类、Filter类和大量工具辅助类。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-web</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 7)包含SpringMVC框架相关的所有类。 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-webmvc</artifactId>
+        <version>${spring.version}</version>
+    </dependency>
+    <!-- 8)Spring test 对JUNIT等测试框架的简单封装 -->
+    <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-test</artifactId>
+        <version>${spring.version}</version>
+        <scope>test</scope>
+    </dependency>
+    <!-- Servlet web -->
+    <dependency>
+        <groupId>javax.servlet</groupId>
+        <artifactId>javax.servlet-api</artifactId>
+        <version>4.0.1</version>
+    </dependency>
+    <!-- json解析 -->
+    <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>2.9.9</version>
+    </dependency>
+    <!-- Map工具类 对标准java Collection的扩展 spring-core.jar需commons-collections.jar -->
+    <dependency>
+        <groupId>commons-collections</groupId>
+        <artifactId>commons-collections</artifactId>
+        <version>3.2.2</version>
+    </dependency>
+    <!-- DAO: MyBatis -->
+    <dependency>
+        <groupId>org.mybatis</groupId>
+        <artifactId>mybatis</artifactId>
+        <version>3.5.1</version>
+    </dependency>
+    <dependency>
+        <groupId>org.mybatis</groupId>
+        <artifactId>mybatis-spring</artifactId>
+        <version>2.0.1</version>
+    </dependency>
+    <!-- 数据库 -->
+    <dependency>
+        <groupId>mysql</groupId>
+        <artifactId>mysql-connector-java</artifactId>
+        <version>8.0.16</version>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/com.mchange/c3p0 -->
+    <dependency>
+        <groupId>com.mchange</groupId>
+        <artifactId>c3p0</artifactId>
+        <version>0.9.5.4</version>
+    </dependency>
+
+    <!-- 图片处理 -->
+    <!-- https://mvnrepository.com/artifact/net.coobird/thumbnailator -->
+    <dependency>
+        <groupId>net.coobird</groupId>
+        <artifactId>thumbnailator</artifactId>
+        <version>0.4.8</version>
+    </dependency>
+    <!-- https://mvnrepository.com/artifact/com.github.penggle/kaptcha -->
+    <dependency>
+        <groupId>com.github.penggle</groupId>
+        <artifactId>kaptcha</artifactId>
+        <version>2.3.2</version>
+    </dependency>
+    <dependency>
+        <groupId>commons-fileupload</groupId>
+        <artifactId>commons-fileupload</artifactId>
+        <version>1.3.2</version>
+    </dependency>
+    <!-- redis客户端:Jedis -->
+    <dependency>
+        <groupId>redis.clients</groupId>
+        <artifactId>jedis</artifactId>
+        <version>2.9.0</version>
+    </dependency>
+
+</dependencies>
+```
+
 ### 验证
 
 AreaDao接口：
@@ -721,3 +867,165 @@ public class AreaDaoTest extends BaseTest {
     }
 }
 ```
+
+## LogBack日志配置
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!--每分钟扫描以下配置-->
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <!-- 定义参数常量 -->
+    <!-- TRACE<DEBUG<INFO<WARN<ERROR -->
+    <!-- logger.trace("msg") logger.debug... -->
+    <property name="log.level" value="debug" />
+    <property name="log.maxHistory" value="30" />
+    <property name="log.filePath" value="${catalina.base}/logs/webapps" />
+    <property name="log.pattern"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n" />
+    <!-- 控制台设置 -->
+    <appender name="consoleAppender" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${log.pattern}</pattern>
+        </encoder>
+    </appender>
+    <!-- DEBUG -->
+    <appender name="debugAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- 文件路径 -->
+        <file>${log.filePath}/debug.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 文件名称 -->
+            <fileNamePattern>${log.filePath}/debug/debug.%d{yyyy-MM-dd}.log.gz
+            </fileNamePattern>
+            <!-- 文件最大保存历史数量 -->
+            <maxHistory>${log.maxHistory}</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${log.pattern}</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>DEBUG</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+    <!-- INFO -->
+    <appender name="infoAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- 文件路径 -->
+        <file>${log.filePath}/info.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 文件名称 -->
+            <fileNamePattern>${log.filePath}/info/info.%d{yyyy-MM-dd}.log.gz
+            </fileNamePattern>
+            <!-- 文件最大保存历史数量 -->
+            <maxHistory>${log.maxHistory}</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${log.pattern}</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>INFO</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+    <!-- ERROR -->
+    <appender name="errorAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- 文件路径 -->
+        <file>${log.filePath}/erorr.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 文件名称 -->
+            <fileNamePattern>${log.filePath}/error/error.%d{yyyy-MM-dd}.log.gz
+            </fileNamePattern>
+            <!-- 文件最大保存历史数量 -->
+            <maxHistory>${log.maxHistory}</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${log.pattern}</pattern>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+    <!--name表示logger关注的是哪个package-->
+    <!--additivity=true表示继承root里的appender，即也会包含控制台的输出-->
+    <logger name="com.yikang.o2o" level="${log.level}" additivity="true">
+        <appender-ref ref="debugAppender"/>
+        <appender-ref ref="infoAppender"/>
+        <appender-ref ref="errorAppender"/>
+    </logger>
+    <root level="info">
+        <appender-ref ref="consoleAppender"/>
+    </root>
+</configuration>
+```
+
+其中，配置log.filePath时用到了`${catalina.base}`这个变量。
+
++ `catalina.home`：Tomcat 安装目录，一般是用来查找库 jar 的。
++ `catalina.base`：服务器配置目录。
+
+在IDEA里启动Tomcat时会发现控制台输出以下信息：
+
+![](../pic/65.png)
+
+会发现`catalina.base`是IDEA下的当前项目的工作环境里的目录。
+
+### Dao层：新增店铺、更新店铺
+
+```java
+public interface ShopDao {
+    /**
+     * 新增店铺
+     */
+    int insertShop(Shop shop);
+
+    /**
+     * 更新店铺信息
+     */
+    int updateShop(Shop shop);
+}
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+    PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yikang.o2o.dao.ShopDao">
+  
+  <insert id="insertShop" useGeneratedKeys="true" keyColumn="shop_id"
+      keyProperty="shopId">
+      INSERT INTO
+      tb_shop(owner_id, area_id, shop_category_id,
+      shop_name, shop_desc, shop_addr,
+      phone, shop_img, priority,
+      create_time, last_edit_time, enable_status,
+      advice)
+      VALUES
+      (#{owner.userId},#{area.areaId},#{shopCategory.shopCategoryId},#{shopName},
+      #{shopDesc},#{shopAddr},#{phone},#{shopImg},#{priority},
+      #{createTime},#{lastEditTime}, #{enableStatus},#{advice})
+   </insert>
+   <update id="updateShop" parameterType="com.yikang.o2o.entity.Shop">
+      update tb_shop
+      <set>
+         <if test="shopName != null">shop_name=#{shopName},</if>
+         <if test="shopDesc != null">shop_desc=#{shopDesc},</if>
+         <if test="shopAddr != null">shop_addr=#{shopAddr},</if>
+         <if test="phone != null">phone=#{phone},</if>
+         <if test="shopImg != null">shop_img=#{shopImg},</if>
+         <if test="priority != null">priority=#{priority},</if>
+         <if test="lastEditTime != null">last_edit_time=#{lastEditTime},</if>
+         <if test="enableStatus != null">enable_status=#{enableStatus},</if>
+         <if test="advice != null">advice=#{advice},</if>
+         <if test="area != null">area_id=#{area.areaId},</if>
+         <if test="shopCategory != null">shop_category_id=#{shopCategory.shopCategoryId}</if>
+      </set>
+      where shop_id=#{shopId}
+   </update>
+</mapper>
+```
+
+` useGeneratedKeys="true" keyColumn="shop_id"   keyProperty="shopId"`使用自增主键，当insert语句执行成功时，自增的主键会自动的注入到传入的shop参数，即shopId（传入前shop.shopId为null，执行后shop.shopId为自增的主键）。
