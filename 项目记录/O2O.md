@@ -27,6 +27,8 @@
 + `/WEB-INF/jsp/`：jsp 1.2 以下版本的文件存放位置。改目录没有特定的声明，同样，可以根据自己的喜好与习惯来命名。此目录主要存放的是 jsp 1.2 以下版本的文件，为区分 jsp 2.0 文件，通常使用 jsp 命名，当然你也可以命名为 jspOldEdition 。
 + `/WEB-INF/jsp2/`：与 jsp 文件目录相比，该目录下主要存放 Jsp 2.0 以下版本的文件，当然，它也是可以任意命名的，同样为区别 Jsp 1.2以下版本的文件目录，通常才命名为 jsp2。
 
+> 外界不能通过url的方式访问WEB-INF文件夹，因此一般把html等资源放在WEB-INF文件夹下。
+
 ### 配置Tomcat
 
 #### 安装
@@ -972,7 +974,173 @@ public class AreaDaoTest extends BaseTest {
 
 会发现`catalina.base`是IDEA下的当前项目的工作环境里的目录。
 
-### Dao层：新增店铺、更新店铺
+## Thumbnailator图片处理和封装Util
+
+### ImageUtil
+
+```java
+public class ImageUtil {
+    //获取resources目录路径
+    private static String basePath = Thread.currentThread().getContextClassLoader().getResource("").getPath();
+    private static final SimpleDateFormat sDateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+    private static final Random r = new Random();
+    private static final Logger logger= LoggerFactory.getLogger(ImageUtil.class);
+
+    /**
+     * 将CommonsMultipartFile转换成File类
+     *
+     * @param cFile
+     * @return
+     */
+    public static File transferCommonsMultipartFileToFile(CommonsMultipartFile cFile) {
+        File newFile = new File(cFile.getOriginalFilename());
+        try {
+            cFile.transferTo(newFile);
+        } catch (IllegalStateException e) {
+            logger.error(e.toString());
+            e.printStackTrace();
+        } catch (IOException e) {
+            logger.error(e.toString());
+            e.printStackTrace();
+        }
+        return newFile;
+    }
+
+    /**
+     * 处理缩略图，并返回新生成图片的相对值路径
+     *
+     * @param thumbnail 文件流
+     * @param targetAddr 相对路径，存储的文件夹地址
+     * @return
+     */
+    public static String generateThumbnail(File thumbnail, String targetAddr) {
+        // 获取不重复的随机名
+        String realFileName = getRandomFileName();
+        // 获取文件的扩展名如png,jpg等
+        String extension = getFileExtension(thumbnail);
+        // 如果目标路径不存在，则自动创建
+        makeDirPath(targetAddr);
+        // 获取文件存储的相对路径(带文件名)
+        String relativeAddr = targetAddr + realFileName + extension;
+        logger.debug("current relativeAddr is :" + relativeAddr);
+        // 获取文件要保存到的目标路径
+        File dest = new File(PathUtil.getImgBasePath() + relativeAddr);
+        logger.debug("current complete addr is :" + PathUtil.getImgBasePath() + relativeAddr);
+        logger.debug("basePath is :" + basePath);
+        // 调用Thumbnails生成带有水印的图片
+        try {
+            Thumbnails.of(thumbnail).size(200, 200)
+                    .watermark(Positions.BOTTOM_RIGHT, ImageIO.read(new File(basePath + "watermark.jpg")), 0.25f)
+                    .outputQuality(0.8f).toFile(dest);
+        } catch (IOException e) {
+            logger.error(e.toString());
+            throw new RuntimeException("创建缩略图失败：" + e.toString());
+        }
+        // 返回图片相对路径地址
+        return relativeAddr;
+    }
+        /**
+     * 递归创建目标路径所涉及到的目录
+     *
+     * @param targetAddr
+     */
+    private static void makeDirPath(String targetAddr) {
+        String realFileParentPath = PathUtil.getImgBasePath() + targetAddr;
+        File dirPath = new File(realFileParentPath);
+        if (!dirPath.exists()) {
+            dirPath.mkdirs();
+        }
+    }
+
+    /**
+     * 获取输入文件流的扩展名
+     *
+     * @param file
+     * @return
+     */
+    private static String getFileExtension(File file) {
+        String fileName = file.getName();
+        return fileName.substring(fileName.lastIndexOf("."));
+    }
+
+    /**
+     * 生成随机文件名，当前年月日小时分钟秒钟+五位随机数
+     *
+     * @return
+     */
+    public static String getRandomFileName() {
+        // 获取随机的五位数
+        int rannum = r.nextInt(89999) + 10000;
+        String nowTimeStr = sDateFormat.format(new Date());
+        return nowTimeStr + rannum;
+    }
+
+    public static void main(String[] args) throws IOException {
+        Thumbnails.of(new File("/Users/baidu/work/image/xiaohuangren.jpg")).size(200, 200)
+                .watermark(Positions.BOTTOM_RIGHT, ImageIO.read(new File(basePath + "/watermark.jpg")), 0.25f)
+                .outputQuality(0.8f).toFile("/Users/baidu/work/image/xiaohuangrennew.jpg");
+    }
+
+    /**
+     * storePath是文件的路径还是目录的路径， 如果storePath是文件路径则删除该文件，
+     * 如果storePath是目录路径则删除该目录下的所有文件
+     *
+     * @param storePath
+     */
+    public static void deleteFileOrPath(String storePath) {
+        File fileOrPath = new File(PathUtil.getImgBasePath() + storePath);
+        if (fileOrPath.exists()) {
+            if (fileOrPath.isDirectory()) {
+                File files[] = fileOrPath.listFiles();
+                for (int i = 0; i < files.length; i++) {
+                    files[i].delete();
+                }
+            }
+            fileOrPath.delete();
+        }
+    }
+}
+```
+
+这里的实现并不是最终的，其中`generateThumbnail`的第一个参数类型设置为`File`是为了方便测试。
+
+### PathUtil
+
+```java
+public class PathUtil {
+    //获取系统的文件分隔符
+    private static String seperator = System.getProperty("file.separator");
+
+    public static String getImgBasePath() {
+        String os = System.getProperty("os.name");
+        String basePath = "";
+        if (os.toLowerCase().startsWith("win")) {
+            basePath = "D:/projectdev/image";
+        } else {
+            basePath = "/home/yikang/publicPro";
+        }
+        basePath = basePath.replace("/", seperator);
+        return basePath;
+    }
+
+    public static String getShopImagePath(long shopId) {
+        String imagePath = "/upload/images/item/shop/" + shopId + "/";
+        return imagePath.replace("/", seperator);
+    }
+
+    public static String getHeadLineImagePath() {
+        String imagePath = "/upload/images/item/headtitle/";
+        return imagePath.replace("/", seperator);
+    }
+
+    public static String getShopCategoryPath() {
+        String imagePath = "/upload/images/item/shopcategory/";
+        return imagePath.replace("/", seperator);
+    }
+}
+```
+
+## Dao层：新增店铺、更新店铺
 
 ```java
 public interface ShopDao {
@@ -1029,3 +1197,448 @@ public interface ShopDao {
 ```
 
 ` useGeneratedKeys="true" keyColumn="shop_id"   keyProperty="shopId"`使用自增主键，当insert语句执行成功时，自增的主键会自动的注入到传入的shop参数，即shopId（传入前shop.shopId为null，执行后shop.shopId为自增的主键）。
+
+## Dto层：ShopExecution
+
+DTO层主要提供的作用：
+
+数据传输对象层，该层负责屏蔽后端的实体层，将UI层需要的数据进行重新的定义和封装，在实际的业务场景下，后端实现或存储的数据远比用户需要的数据要庞大和复杂，所以前端需要的数据相对来说要么是组合的，要么是抽取的，不是完整的，因为我们在设计数据存储格式上都会有一些额外的设计和考虑。
+
+前端的UI层，只是知道DTO的存在，同时前端需要的数据都在一个DTO中，这样，每次调用服务层的时候，只需要调用一次就可以完成所有的业务逻辑操作，而不是原来的直接调用业务逻辑层那样的，需要调用多次，对于分布式场景下，减少服务调用的次数，尤其重要。
+
+### ShopStateEnum
+
+Dto需要包含状态和状态信息，可以将这状态和状态信息封装为枚举类型。
+
+将构造器定义为private，不开放setter，防止第三方修改枚举。
+
+```java
+package com.yikang.o2o.enums;
+
+public enum ShopStateEnum {
+    CHECK(0, "审核中"), OFFLINE(-1, "非法店铺"), SUCCESS(1, "操作成功"),
+    PASS(2, "通过认证"), INNER_ERROR(-1001, "内部系统错误"),
+    NULL_SHOPID(-1002, "shopId为空");
+    private int state;
+    private String stateInfo;
+
+    //设置为private表示不想让第三方定义ShopStateEnum
+    private ShopStateEnum(int state, String stateInfo) {
+        this.state = state;
+        this.stateInfo = stateInfo;
+    }
+
+    public static ShopStateEnum stateOf(int state) {
+        for (ShopStateEnum stateEnum : values()) {
+            if (stateEnum.getState() == state) return stateEnum;
+        }
+        return null;
+    }
+
+    public int getState() {
+        return state;
+    }
+
+    public String getStateInfo() {
+        return stateInfo;
+    }
+}
+```
+
+#### ShopExecution
+
+增删改查可能涉及到多个shop，比如增删改涉及一个shop（大部分情况，小部分情况是多个），查询设计多个shop，因此需要分别引入`shop`和`shopList`。同时成员变量`count`来存储店铺数量。
+
+```java
+public class ShopExecution {
+    //结果状态
+    private int state;
+    //状态标识
+    private String stateInfo;
+    //店铺数量
+    private int count;
+    //操作的shop（增删改店铺的时候用到）
+    private Shop shop;
+    //shop列表（查询店铺列表的时候使用）
+    private List<Shop> shopList;
+
+    public ShopExecution() {
+    }
+
+    //店铺操作失败的时候的构造器
+    public ShopExecution(ShopStateEnum stateEnum) {
+        this.state = stateEnum.getState();
+        this.stateInfo = stateEnum.getStateInfo();
+    }
+
+    //店铺操作成功的构造器
+    public ShopExecution(ShopStateEnum stateEnum, Shop shop) {
+        this.state = stateEnum.getState();
+        this.stateInfo = stateEnum.getStateInfo();
+        this.shop = shop;
+    }
+
+    //店铺操作成功的构造器
+    public ShopExecution(ShopStateEnum stateEnum, List<Shop> shopList) {
+        this.state = stateEnum.getState();
+        this.stateInfo = stateEnum.getStateInfo();
+        this.shopList = shopList;
+    }
+    //getter and setter
+}
+```
+
+## Service层：店铺注册
+
+```java
+public interface ShopService {
+    ShopExecution addShop(Shop shop, File shopImg);
+}
+```
+注意，因为addShop分为多个步骤，需要保证原子性，因此需要添加`@Transactional`注解。
+
+当抛出RuntimeException异常或其子类时，事务会回滚。注意，抛出Exception并不会使事务回滚。
+
+```java
+@Service
+public class ShopServiceImpl implements ShopService {
+
+
+    @Autowired
+    private ShopDao shopDao;
+
+    @Override
+    @Transactional
+    public ShopExecution addShop(Shop shop, File shopImg) {
+        //空值判断
+        if (shop == null) {
+            return new ShopExecution(ShopStateEnum.NULL_SHOP);
+        }
+        try {
+            //初始值
+            shop.setEnableStatus(0);
+            shop.setCreateTime(new Date());
+            shop.setLastEditTime(new Date());
+            //添加店铺信息
+            int effectedNum = shopDao.insertShop(shop);
+            if (effectedNum <= 0) {
+                //默认情况下SpringAOP只捕获ShopOperationException的异常
+                //抛出Exception不会回滚
+                throw new ShopOperationException("店铺创建失败");
+            } else {
+                if (shopImg != null) {
+                    //存储图片
+                    try {
+                        addShopImg(shop, shopImg);
+                    } catch (Exception e) {
+                        throw new ShopOperationException("addShopImg error: " + e.getMessage());
+                    }
+                }
+                //跟新店铺的图片地址
+                effectedNum = shopDao.updateShop(shop);
+                if (effectedNum <= 0) {
+                    throw new ShopOperationException("跟新图片地址失败");
+                }
+            }
+        } catch (Exception e) {
+            //抛出异常，交给controller处理
+            throw new ShopOperationException("addShop error: " + e.getMessage());
+        }
+        return new ShopExecution(ShopStateEnum.CHECK, shop);
+    }
+
+    private void addShopImg(Shop shop, File shopImg) {
+        //获取shop的图片的目录的相对值路径
+        String dest = PathUtil.getShopImagePath(shop.getShopId());
+        String shopImgAddr = ImageUtil.generateThumbnail(shopImg, dest);
+        shop.setShopImg(shopImgAddr);
+    }
+}
+```
+
+### 测试
+
+注意，在test目录下执行junit测试，`Thread.currentThread().getContextClassLoader().getResource("").getPath()`输出的是`/home/yikang/IdeaProjects/o2o/target/test-classes/`路径，因此如果仅仅将资源文件放在src/main/resources是无法访问到的，应该放在src/test/resources目录下，编译整个项目后，在/target/test-classes目录下才会生成相应的资源文件。
+
+```java
+@Test
+public void testAddShop() throws ShopOperationException, FileNotFoundException {
+    Shop shop = new Shop();
+    PersonInfo owner = new PersonInfo();
+    Area area = new Area();
+    ShopCategory shopCategory = new ShopCategory();
+    owner.setUserId(1L);
+    area.setAreaId(2);
+    shopCategory.setShopCategoryId(1L);
+    shop.setOwner(owner);
+    shop.setArea(area);
+    shop.setShopCategory(shopCategory);
+    shop.setShopName("测试的店铺3");
+    shop.setShopDesc("test3");
+    shop.setShopAddr("test3");
+    shop.setPhone("test3");
+    shop.setCreateTime(new Date());
+    shop.setEnableStatus(ShopStateEnum.CHECK.getState());
+    shop.setAdvice("审核中");
+    File shopImg = new File("/home/yikang/Picture/user_800_450.jpg");
+    ShopExecution se = shopService.addShop(shop, shopImg);
+    assertEquals(ShopStateEnum.CHECK.getState(), se.getState());
+}
+```
+
+## HttpServletRequestUtil
+
+简单的一个工具类，帮助从HttpServletRequest中获取对应的字段。
+
+```java
+public class HttpServletRequestUtil {
+    public static int getInt(HttpServletRequest request, String key) {
+        try {
+            return Integer.decode(request.getParameter(key));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    public static long getLong(HttpServletRequest request, String key) {
+        try {
+            return Long.valueOf(request.getParameter(key));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    public static Double getDouble(HttpServletRequest request, String key) {
+        try {
+            return Double.valueOf(request.getParameter(key));
+        } catch (Exception e) {
+            return -1d;
+        }
+    }
+
+    public static boolean getBoolean(HttpServletRequest request, String key) {
+        try {
+            return Boolean.valueOf(request.getParameter(key));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static String getString(HttpServletRequest request, String key) {
+        try {
+            String result = request.getParameter(key);
+            if (result != null) {
+                result = result.trim();
+            }
+            if ("".equals(result)) {
+                result = null;
+            }
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}
+```
+
+## Controller：店铺注册
+
+对ImageUtil改动了些，这里省略。
+
+```java
+@Autowired
+private ShopService shopService;
+
+@RequestMapping(value = "/registershop", method = RequestMethod.POST)
+@ResponseBody
+private Map<String, Object> registerShop(HttpServletRequest request) {
+    //接受并转化相应的参数，包括店铺信息以及图片信息
+    Map<String, Object> modelMap = new HashMap<>();
+    String shopStr = HttpServletRequestUtil.getString(request, "shopStr");
+    ObjectMapper mapper = new ObjectMapper();
+    Shop shop = null;
+    try {
+        shop = mapper.readValue(shopStr, Shop.class);
+    } catch (Exception e) {
+        modelMap.put("success", false);
+        modelMap.put("errMsg", e.getMessage());
+    }
+    //文件流
+    CommonsMultipartFile shopImg = null;
+    CommonsMultipartResolver commonsMultipartResolver =
+            new CommonsMultipartResolver(request.getSession().getServletContext());
+    if (commonsMultipartResolver.isMultipart(request)) {
+        MultipartHttpServletRequest multipartHttpServletRequest = (MultipartHttpServletRequest) request;
+        shopImg = (CommonsMultipartFile) multipartHttpServletRequest.getFile("shopImg");
+    } else {
+        modelMap.put("success", false);
+        modelMap.put("errMsg", "上传图片不能为空");
+    }
+    //注册店铺
+    if (shop != null && shopImg != null) {
+        PersonInfo owner = new PersonInfo();
+        owner.setUserId(1L);
+        shop.setOwner(owner);
+        ShopExecution se = null;
+        try {
+            se = shopService.addShop(shop, shopImg.getInputStream(), shopImg.getOriginalFilename());
+        } catch (IOException e) {
+            modelMap.put("success", false);
+            modelMap.put("errMsg", e.getMessage());
+        }
+        if (se.getState() == ShopStateEnum.CHECK.getState()) {
+            modelMap.put("success", true);
+        } else {
+            modelMap.put("success", false);
+            modelMap.put("errMsg", se.getStateInfo());
+        }
+    } else {
+        modelMap.put("success", false);
+        modelMap.put("errMsg", "请输入店铺信息");
+    }
+    //返回结果
+    return modelMap;
+}
+```
+
+## 验证码
+
+将下列依赖添加到pom.xml中：
+
+```xml
+<dependency>
+    <groupId>com.github.penggle</groupId>
+    <artifactId>kaptcha</artifactId>
+    <version>2.3.2</version>
+</dependency>
+```
+
+修改web.xml，添加一个用于验证码的servlet：
+
+```xml
+<servlet>
+    <servlet-name>Kaptcha</servlet-name>
+    <servlet-class>com.google.code.kaptcha.servlet.KaptchaServlet</servlet-class>
+    <!-- 是否有边框 -->
+    <init-param>
+        <param-name>kaptcha.border</param-name>
+        <param-value>no</param-value>
+    </init-param>
+    <!-- 字体颜色 -->
+    <init-param>
+        <param-name>kaptcha.textproducer.font.color</param-name>
+        <param-value>red</param-value>
+    </init-param>
+    <!-- 图片宽度 -->
+    <init-param>
+        <param-name>kaptcha.image.width</param-name>
+        <param-value>135</param-value>
+    </init-param>
+    <!-- 使用哪些字符生成验证码 -->
+    <init-param>
+        <param-name>kaptcha.textproducer.char.string</param-name>
+        <param-value>ACDEFHKPRSTWX345679</param-value>
+    </init-param>
+    <!-- 图片高度 -->
+    <init-param>
+        <param-name>kaptcha.image.height</param-name>
+        <param-value>50</param-value>
+    </init-param>
+    <!-- 字体大小 -->
+    <init-param>
+        <param-name>kaptcha.textproducer.font.size</param-name>
+        <param-value>43</param-value>
+    </init-param>
+    <!-- 干扰线的颜色 -->
+    <init-param>
+        <param-name>kaptcha.noise.color</param-name>
+        <param-value>black</param-value>
+    </init-param>
+    <!-- 字符个数 -->
+    <init-param>
+        <param-name>kaptcha.textproducer.char.length</param-name>
+        <param-value>4</param-value>
+    </init-param>
+    <!-- 字体 -->
+    <init-param>
+        <param-name>kaptcha.textproducer.font.names</param-name>
+        <param-value>Arial</param-value>
+    </init-param>
+</servlet>
+<servlet-mapping>
+        <servlet-name>Kaptcha</servlet-name>
+        <url-pattern>/Kaptcha</url-pattern>
+</servlet-mapping>
+```
+
+这样，访问http://localhost:8080/Kaptcha?1就能得到验证码。
+
+注意，前后端没有分离的情况下，img的属性src应该取访问web.xml的路径，比如这种情况：
+
+![](/home/yikang/Picture/2021-03-17 17-43-09屏幕截图.png)
+
+`shopoperation.html`中的验证码的路径应该写为`../../Kapcha?id`。
+
+定义CodeUtil工具类从HttpServletRequest获取验证码的信息，并与HttpServletRequest中的verifyCodeActual字段进行比较。
+
+```java
+public class CodeUtil {
+   /**
+    * 检查验证码是否和预期相符
+    * 
+    * @param request
+    * @return
+    */
+   public static boolean checkVerifyCode(HttpServletRequest request) {
+      String verifyCodeExpected = (String) request.getSession()
+            .getAttribute(com.google.code.kaptcha.Constants.KAPTCHA_SESSION_KEY);
+      String verifyCodeActual = HttpServletRequestUtil.getString(request, "verifyCodeActual");
+      if (verifyCodeActual == null || !verifyCodeActual.equals(verifyCodeExpected)) {
+         return false;
+      }
+      return true;
+   }
+}
+```
+
+## 上传图片的文件流的配置
+
+注意，需要在spring-web.xml中配置文件上传解析器，否则request中的所有key都会为空。
+
+```xml
+<!-- 文件上传解析器 -->
+<bean id="multipartResolver"
+      class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+    <property name="defaultEncoding" value="utf-8"></property>
+    <!-- 1024 * 1024 * 20 = 20M -->
+    <property name="maxUploadSize" value="20971520"></property>
+    <property name="maxInMemorySize" value="20971520"></property>
+</bean>
+```
+
+同时需要引入库：
+
+```xml
+<!--文件上传-->
+<dependency>
+    <groupId>commons-fileupload</groupId>
+    <artifactId>commons-fileupload</artifactId>
+    <version>1.3.2</version>
+</dependency>
+```
+
+至于获取图片文件流`CommonsMultipartFile`，需要用以下方式：
+
+```java
+//获取request中的名为shopImg的文件流
+CommonsMultipartFile shopImg = null;
+CommonsMultipartResolver commonsMultipartResolver =
+        new CommonsMultipartResolver(request.getSession().getServletContext());
+if (commonsMultipartResolver.isMultipart(request)) {
+    MultipartHttpServletRequest multipartHttpServletRequest = (MultipartHttpServletRequest) request;
+    shopImg = (CommonsMultipartFile) multipartHttpServletRequest.getFile("shopImg");
+} else {
+    modelMap.put("success", false);
+    modelMap.put("errMsg", "上传图片不能为空");
+}
+```
