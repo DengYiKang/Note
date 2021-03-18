@@ -1627,6 +1627,39 @@ public class CodeUtil {
 </dependency>
 ```
 
+前端js代码片段：
+
+```javascript
+var shop={};
+//shop成员赋值......
+var shopImg = $('#shop-img')[0].files[0];
+var formData = new FormData();
+formData.append('shopImg', shopImg);
+formData.append('shopStr', JSON.stringify(shop));
+var verifyCodeActual = $('#j_captcha').val();
+if (!verifyCodeActual) {
+    $.toast("请输入验证码！");
+    return;
+}
+formData.append("verifyCodeActual", verifyCodeActual);
+$.ajax({
+    url: registerShopUrl,
+    type: 'POST',
+    data: formData,
+    contentType: false,
+    processData: false,
+    cache: false,
+    success: function (data) {
+        if (data.success) {
+            $.toast("提交成功!");
+        } else {
+            $.toast("提交失败!");
+        }
+        $('#captcha_img').click();
+    }
+})
+```
+
 至于获取图片文件流`CommonsMultipartFile`，需要用以下方式：
 
 ```java
@@ -1642,3 +1675,60 @@ if (commonsMultipartResolver.isMultipart(request)) {
     modelMap.put("errMsg", "上传图片不能为空");
 }
 ```
+
+## MySql主从分离实现
+
+首先在两台服务器上安装Mysql，系统为centos7。
+
+安装Mysql：
+
+```shell
+yum localinstall https://dev.mysql.com/get/mysql57-community-release-el7-8.noarch.rpm
+yum install -y mysql-community-server
+systemctl start mysqld.service
+```
+
+修改密码：
+
+```shell
+vim /etc/my.cnf
+```
+
+将下列代码添加到`[mysqld]`下：
+
+```text
+skip-grant-tables=1   
+```
+
+重启：
+
+```shell
+systemctl restart mysqld
+systemctl status mysqld
+```
+
+登录并修改密码：
+
+```shell
+# 不用输入密码，直接按enter就行了
+mysql -uroot -p
+use mysql
+```
+
+```sql
+update user set authentication_string = password('159753'),password_expired = 'N',password_last_changed = now() where user = 'root';
+flush privileges;
+```
+
+然后将/etc/my.cnf中的添加的代码注释掉。
+
+重启后降低密码策略：
+
+```sql
+set global validate_password_policy=LOW;
+set global validate_password_length=6; 
+use mysql;
+# 开启允许所有地址以root身份登录访问
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '159753' WITH GRANT OPTION; 
+```
+
