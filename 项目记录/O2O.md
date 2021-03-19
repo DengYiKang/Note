@@ -1678,6 +1678,8 @@ if (commonsMultipartResolver.isMultipart(request)) {
 
 ## MySql主从分离实现
 
+### 安装Mysql
+
 首先在两台服务器上安装Mysql，系统为centos7。
 
 安装Mysql：
@@ -1720,6 +1722,8 @@ update user set authentication_string = password('159753'),password_expired = 'N
 flush privileges;
 ```
 
+当然也可以用这个语句`ALTER USER 'root'@'localhost' IDENTIFIED BY '159753'`。
+
 然后将/etc/my.cnf中的添加的代码注释掉。
 
 重启后降低密码策略：
@@ -1727,8 +1731,119 @@ flush privileges;
 ```sql
 set global validate_password_policy=LOW;
 set global validate_password_length=6; 
+SHOW VARIABLES LIKE 'validate_password%';
 use mysql;
 # 开启允许所有地址以root身份登录访问
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '159753' WITH GRANT OPTION; 
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '159753!' WITH GRANT OPTION; 
 ```
 
+### 配置Mysql
+
+#### 主服务器
+
+```shell
+vim /etc/my.cnf
+```
+
+在`[mysqld]`下添加下列配置：
+
+```Tex
+server-id=1
+log-bin=master-bin
+log-bin-index=master-bin.index
+```
+
+重启服务器后，进入mysql，执行`show master status;`显示：
+
+![](../pic/68.png)
+
+先改变密码策略，否则create user时会报错：
+
+```mysql
+SHOW VARIABLES LIKE 'validate_password%';
+set global validate_password_policy=0; 
+set global validate_password_mixed_case_count=0; 
+set global validate_password_number_count=3;  
+set global validate_password_special_char_count=0;
+set global validate_password_length=3; 
+```
+
+```mysql
+create user repl;
+# 106.13.85.80是从服务器ip地址，表示从服务器用repl的账号以mysql的密码登录时，基于所有的数据库的所有的表的权限
+GRANT REPLICATION SLAVE ON *.* TO 'repl'@'106.13.85.80' IDENTIFIED BY 'mysql';
+flush privileges;
+```
+
+> 这里改变密码策略后还是报错不符合密码的规定。所以我这直接将这个检查插件给卸载了。
+>
+> uninstall plugin validate_password;
+>
+> 推测可能是之前设置密码的语句有问题？下次实验应该考虑换另一种方式设置密码，如果还不行，那就可能是插件的问题了。
+
+#### 从服务器
+
+同样地在/etc/my.cnf文件中添加以下配置：
+
+```tex
+server-id=2
+relay-log-index=slave-relay-bin.index
+relay-log=slave-relay-bin
+```
+
+进入mysql，执行以下命令：
+
+```mysql
+change master to master_host='172.17.0.12', master_port=3306, master_user='repl', master_password='mysql', master_log_file='master-bin.000007', master_log_pos=0;
+start slave;
+show slave status\G;
+```
+
+>这里有一个坑，当时租的是两个云服务器，用ifconfig查到的ip不是公网ip，而是内网ip，它进行了NAT转换。最好去控制台看看公网ip是多少。
+
+最终结果如下：
+
+![](../pic/69.png)
+
+> 注意，从库只能读数据。
+>
+> 主库的mysql的版本可以与从库的mysql版本不一致，但是从库的版本必须要比主库的高（向后兼容）。
+
+### 从本地数据库导入到云数据库
+
+```shell
+# 将所有的表以及数据都导入到o2o.sql文件中
+mysqldump -uroot -p o2o > o2o.sql\
+# 上传到master服务器
+scp o2o.sql root@1.15.172.26:/root
+```
+
+切换到master服务器，进入mysql，导入sql文件：
+
+```mysql
+create database o2o;
+use o2o;
+source ~/o2o.sql;
+```
+
+这样，所有的表及其数据都已经导入到master上了，同时slave服务器上的数据也同步更新了。
+
+### 允许本地服务器远程连接云数据库
+
+在主服务器和从服务器授权增删改查给远程服务器，以`work`账号，`159753`为密码登录：
+
+```mysql
+GRANT select, insert, update, delete ON *.* TO 'work'@'%' IDENTIFIED BY '159753' WITH GRANT OPTION;
+flush privileges;
+```
+
+### 重新配置jdbc
+
+将locahost更改为远程服务器的地址，将账号和密码更改为`work`与`159753`。
+
+```properties
+jdbc.driver=com.mysql.cj.jdbc.Driver
+jdbc.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+jdbc.username=work
+jdbc.password=159753
+```
