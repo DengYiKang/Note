@@ -1847,3 +1847,214 @@ jdbc.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf
 jdbc.username=work
 jdbc.password=159753
 ```
+
+### 代码层面的读写分离
+
+主服务器负责写，从服务器负责读。
+
+#### DynamicDataSource
+
+`determineCurrentLookupKey`方法用来决定数据库的key。这个key会在spring-dao.xml文件中与datasource进行映射。
+
+```java
+public class DynamicDataSource extends AbstractRoutingDataSource {
+    @Override
+    protected Object determineCurrentLookupKey() {
+        return DynamicDataSourceHolder.getDbType();
+    }
+}
+```
+
+#### DynamicDataSourceHolder
+
+封装了两个key，类型是字符串，分别为`"master"`和`"slave"`。使用了ThreadLocal，因此是线程安全的。
+
+```java
+public class DynamicDataSourceHolder {
+    private static Logger logger = LoggerFactory.getLogger(DynamicDataSourceHolder.class);
+    private static ThreadLocal<String> contextHolder = new ThreadLocal<>();
+    public static final String DB_MASTER = "master";
+    public static final String DB_SLAVE = "slave";
+
+    /**
+     * 获取线程的DbType
+     *
+     * @return
+     */
+    public static String getDbType() {
+        String db = contextHolder.get();
+        if (db == null) {
+            db = DB_MASTER;
+        }
+        return db;
+    }
+
+    /**
+     * 设置线程的DbType
+     *
+     * @param str
+     * @return
+     */
+    public static void setDbType(String str) {
+        logger.debug("所使用的数据源为：" + str);
+        contextHolder.set(str);
+    }
+
+    /**
+     * 清理连接类型
+     */
+    public static void clearDbType() {
+        contextHolder.remove();
+    }
+}
+```
+
+#### DynamicDataSourceInterceptor
+
+实现一个拦截器，注意接口`Interceptor`是`org.apache.ibatis.plugin`下的。
+
+用来拦截所有的sql操作，如果sql操作是事务的，那么交由主服务器；如果sql操作是增删改，那么交由主服务器。如果仅仅是查询，那么交由从服务器。
+
+但是注意，查询操作中存在自增主键的情况，insert方法将调用`SELECT LAST_INSERT_ID()`来获取自增主键，因此查询语句中的`SELECT LAST_INSERT_ID()`需要交由主服务器。
+
+```java
+//增删改的操作全部被封装到了update中了
+@Intercepts({
+        @Signature(type = Executor.class, method = "update", args = {MappedStatement.class, Object.class}),
+        @Signature(type = Executor.class, method = "query", args = {MappedStatement.class, Object.class, RowBounds.class, ResultHandler.class})})
+public class DynamicDataSourceInterceptor implements Interceptor {
+    private static Logger logger = LoggerFactory.getLogger(DynamicDataSourceInterceptor.class);
+    private static final String REGEX = ".*insert\\u0020.*|.*delete\\u0020.*|.*update\\u0020.*";
+
+    @Override
+    public Object intercept(Invocation invocation) throws Throwable {
+        //判断被拦截的方法是否是事务的（被@Transactional注解的）
+        boolean synchronizationActive = TransactionSynchronizationManager.isActualTransactionActive();
+        Object[] objects = invocation.getArgs();
+        MappedStatement ms = (MappedStatement) objects[0];
+        String lookupKey = DynamicDataSourceHolder.DB_MASTER;
+        if (synchronizationActive != true) {//如果不是事务的
+            // 读方法
+            if (ms.getSqlCommandType().equals(SqlCommandType.SELECT)) {
+                //selectKey为自增id查询主键(SELECT LAST_INSERT_ID())方法，使用主库
+                //因为insert方法需要调用SELECT LAST_INSERT_ID()的方法(自增主键)，因此需要使用主库
+                if (ms.getId().contains(SelectKeyGenerator.SELECT_KEY_SUFFIX)) {
+                    lookupKey = DynamicDataSourceHolder.DB_MASTER;
+                } else {
+                    BoundSql boundSql = ms.getSqlSource().getBoundSql(objects[1]);
+                    String sql = boundSql.getSql().toLowerCase(Locale.CHINA).replaceAll("[\\t\\n\\r]", " ");
+                    if (sql.matches(REGEX)) {//增删改操作
+                        lookupKey = DynamicDataSourceHolder.DB_MASTER;
+                    } else {
+                        lookupKey = DynamicDataSourceHolder.DB_SLAVE;
+                    }
+                }
+            }
+        } else {
+            //所有事务的方法都经过主库
+            lookupKey = DynamicDataSourceHolder.DB_MASTER;
+        }
+        logger.debug("设置方法[{}] use [{}] Strategy, SqlCommanType [{}]..", ms.getId(), lookupKey,
+                ms.getSqlCommandType().name());
+        DynamicDataSourceHolder.setDbType(lookupKey);
+        return invocation.proceed();
+    }
+
+    @Override
+    public Object plugin(Object target) {
+        //Executor是用来支持增删改查的操作
+        //如果是增删改查的操作就将它拦截下来
+        if (target instanceof Executor) {
+            return Plugin.wrap(target, this);
+        }
+        return target;
+    }
+
+    @Override
+    public void setProperties(Properties properties) {
+
+    }
+}
+```
+
+#### jdbc.properties
+
+新增了两个服务器url。
+
+```properties
+jdbc.driver=com.mysql.cj.jdbc.Driver
+#主库：1.15.172.26
+#从库：106.13.85.80
+jdbc.master.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+jdbc.slave.url=jdbc:mysql://106.13.85.80:3306/o2o?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+jdbc.username=work
+jdbc.password=159753
+```
+
+#### mybatis-config.xml
+
+将自定义的`DynamicDataSourceInterceptor`配置到mybatis-config.xml中。
+
+```xml
+<plugins>
+    <plugin interceptor="com.yikang.o2o.dao.split.DynamicDataSourceInterceptor">
+
+    </plugin>
+</plugins>
+```
+
+#### spring-dao.xml
+
+定义一个抽象类型的连接池，提供公共属性。两个连接池分别为master与slave继承他，分别配置子集的ip与密码等。
+
+配置动态数据源，将之前配置的两个连接池bean与holder中的两个字段`"master"`与`"slave"`映射上。
+
+最后配置懒加载，当生成sql语句后才去生成数据源。
+
+```xml
+<!-- 2.数据库连接池 -->
+<bean id="abstractDataSource" abstract="true" class="com.mchange.v2.c3p0.ComboPooledDataSource"
+      destroy-method="close">
+    <!-- c3p0连接池的私有属性 -->
+    <property name="maxPoolSize" value="30"/>
+    <property name="minPoolSize" value="10"/>
+    <!-- 关闭连接后不自动commit -->
+    <property name="autoCommitOnClose" value="false"/>
+    <!-- 获取连接超时时间 -->
+    <property name="checkoutTimeout" value="10000"/>
+    <!-- 当获取连接失败重试次数 -->
+    <property name="acquireRetryAttempts" value="2"/>
+</bean>
+<bean id="master" parent="abstractDataSource">
+    <!--配置连接池属性-->
+    <property name="driverClass" value="${jdbc.driver}"/>
+    <property name="jdbcUrl" value="${jdbc.master.url}"/>
+    <property name="user" value="${jdbc.username}"/>
+    <property name="password" value="${jdbc.password}"/>
+</bean>
+<bean id="slave" parent="abstractDataSource">
+    <!--配置连接池属性-->
+    <property name="driverClass" value="${jdbc.driver}"/>
+    <property name="jdbcUrl" value="${jdbc.slave.url}"/>
+    <property name="user" value="${jdbc.username}"/>
+    <property name="password" value="${jdbc.password}"/>
+</bean>
+<!--配置动态数据源，这里的targetDataSources就是路由数据源所对应的名称-->
+<bean id="dynamicDataSource" class="com.yikang.o2o.dao.split.DynamicDataSource">
+    <property name="targetDataSources">
+        <map>
+            <!--value-ref与上面定义的bean的id保持对应-->
+            <!--key与DynamicDataSource类determineCurrentLookupKey方法返回的值保持一致-->
+            <!--determineCurrentLookupKey返回的是holder中定义的两种字段-->
+            <entry value-ref="master" key="master"></entry>
+            <entry value-ref="slave" key="slave"></entry>
+        </map>
+    </property>
+</bean>
+<!--懒加载，当生成sql语句后才去生成数据源-->
+<bean id="dataSource" class="org.springframework.jdbc.datasource.LazyConnectionDataSourceProxy">
+    <property name="targetDataSource">
+        <ref bean="dynamicDataSource"></ref>
+    </property>
+</bean>
+```
