@@ -47,7 +47,7 @@ sudo gedit ./startup.sh
 打开后，在最后一行之前添加以下内容：
 
 ```shell
-export JAVA_HOME=/opt/jdk1.8.0_221
+export JAVA_HOME=/opt/jdk1.8.0_281
 export JRE_HOME=${JAVA_HOME}/jre
 export CALSSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
 export PATH=${JAVA_HOME}/bin:$PATH
