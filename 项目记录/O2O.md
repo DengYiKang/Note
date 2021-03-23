@@ -1571,11 +1571,11 @@ private Map<String, Object> registerShop(HttpServletRequest request) {
 </servlet-mapping>
 ```
 
-这样，访问http://localhost:8080/Kaptcha?1就能得到验证码。
+这样，访问http://localhost:8080/Kaptcha?1就能得到验证码。对于点击更换验证码的实现，可以采用生成随机数作为id拼接到url后面。
 
 注意，前后端没有分离的情况下，img的属性src应该取访问web.xml的路径，比如这种情况：
 
-![](/home/yikang/Picture/2021-03-17 17-43-09屏幕截图.png)
+<img src="/home/yikang/Document/gitRep/Note/pic/71.png" style="zoom:80%;" />
 
 `shopoperation.html`中的验证码的路径应该写为`../../Kapcha?id`。
 
@@ -2058,3 +2058,83 @@ jdbc.password=159753
     </property>
 </bean>
 ```
+
+## junit测试的顺序
+
+在测试时，应该保证对数据库操作的回环，即测试前与测试后数据库是一致的。一般依次进行插入、查询、修改、删除等操作。那么这需要保证junit测试方法的执行顺序。
+
+可以通过注解`@FixMethodOrder(MethodSorters.NAME_ASCENDING)`来实现，使得方法的执行顺序按照方法名来。
+
+例如：
+
+```java
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
+public class ProductCategoryDaoTest extends BaseTest {
+
+    @Autowired
+    private ProductCategoryDao productCategoryDao;
+    
+	@Test
+    public void testABatchInsertProductCategory() {
+        ProductCategory productCategory = new ProductCategory();
+        productCategory.setProductCategoryName("商品类别1");
+        productCategory.setPriority(0);
+        productCategory.setCreateTime(new Date());
+        productCategory.setShopId(11L);
+        ProductCategory productCategory2 = new ProductCategory();
+        productCategory2.setProductCategoryName("商品类别2");
+        productCategory2.setPriority(1);
+        productCategory2.setCreateTime(new Date());
+        productCategory2.setShopId(11L);
+        List<ProductCategory> list = new ArrayList<>();
+        list.add(productCategory);
+        list.add(productCategory2);
+        int effectedNum = productCategoryDao.batchInsertProductCategory(list);
+        assertEquals(2, effectedNum);
+    }
+
+    @Test
+    public void testBQueryByShopId() {
+        long shopId = 11;
+        List<ProductCategory> productCategories = productCategoryDao.queryProductCategoryList(shopId);
+        for (ProductCategory productCategory : productCategories) {
+            System.out.println(productCategory.getProductCategoryName());
+        }
+    }
+
+    @Test
+    public void testCDeleteProductCategory() {
+        long shopId = 11L;
+        List<ProductCategory> list = productCategoryDao.queryProductCategoryList(shopId);
+        for (ProductCategory productCategory : list) {
+            if ("商品类别1".equals(productCategory.getProductCategoryName())
+                    || "商品类别2".equals(productCategory.getProductCategoryName())) {
+                int effectedNum = productCategoryDao.deleteProductCategory(productCategory.getProductCategoryId(), shopId);
+                assertEquals(1, effectedNum);
+            }
+        }
+    }
+
+}
+```
+
+## 其他坑
+
+### mybatis中#{}与${}
+
+写like语句的时候 一般都会写成 like '% %' 在mybatis里面写就是应该是 like '%\${name} %' 而不是 '%#{name} %' 。
+
+\${name} 是不带单引号的，而#{name} 是带单引号的。
+
+```xml
+<if
+   test="productCondition.productCategory!=null
+    and productCondition.productCategory.productCategoryId!=null">
+   and product_category_id =
+   #{productCondition.productCategory.productCategoryId}
+</if>
+<if test="productCondition.productName!=null">
+   and product_name like '%${productCondition.productName}%'
+</if>
+```
+
