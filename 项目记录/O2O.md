@@ -44,7 +44,7 @@ cd /opt/tomcat9/bin
 sudo gedit ./startup.sh
 ```
 
-打开后，在最后一行之前添加以下内容：
+打开后，在最后一行之前添加以下内容：（这个步骤不做也行，如果前面已经配置了jdk的环境变量）
 
 ```shell
 export JAVA_HOME=/opt/jdk1.8.0_281
@@ -2138,3 +2138,56 @@ public class ProductCategoryDaoTest extends BaseTest {
 </if>
 ```
 
+### 相对路径访问图片
+
+因为数据库中存储图片的路径使用的是相对路径，因此前端访问图片时有两种办法：
+
++ 后端从数据库中取出相对路径后再进行拼接完整的url返回前端
++ 配置tomcat自动解析
+
+这里使用第二种方式。
+
+打开tomcat的conf目录下的server.xml文件，在`Host`标签下添加`Context`标签：
+
+```xml
+<Context docBase="/home/yikang/publicPro/upload" path="/upload"/>
+```
+
+表示如果发现有/upload路径，那么tomcat会将他替换成/home/yikang/publicPro/upload。
+
+### tomcat部署
+
+在服务器上安装tomcat后，需要配置server.xml，因为数据库存储的是相对路径，就是上一个问题所讲的：
+
+```xml
+<Context docBase="/home/yikang/publicPro/upload" path="/upload"/>
+```
+
+修改后，启动tomcat发现无法访问，执行./shutdown.sh命令报错，发现它根本就没有启动过。
+
+可以用以下命令查看端口占用情况，发现根本就没有启动过。
+
+```shell
+netstat -tunlp|grep 8080
+netstat -tunlp|grep 8005
+```
+
+查看logs目录下的catalina.out 文件，查看后1000行：
+
+```shell
+tail -n 1000 catalina.out
+```
+
+发现是因为服务器上没有创建目录/home/yikang/publicPro/upload：
+
+![](/home/yikang/Document/gitRep/Note/pic/72.png)
+
+创建后成功执行。
+
+注意，访问url需要带上端口号8080/项目名，如果将tomcat的端口改成默认端口80就可以把端口省略，如果想把项目名省略，可以在server.xml里配置Context：
+
+```java
+<Context docBase="../webapps/o2o/" path="/" />
+```
+
+war包是放在tomcat的webapps目录下，然后tomcat会自动将war解压成o2o目录，其中包含所有的文件包括资源文件js、css等。
