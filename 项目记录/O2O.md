@@ -515,6 +515,12 @@ jdbc.password=159753
 ### spring-dao.xml
 
 ```xml
+<context:property-placeholder location="classpath:jdbc.properties"/>
+```
+
+`context:property-placeholder`会将properties文件的配置信息引入。
+
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <beans xmlns="http://www.springframework.org/schema/beans"
        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -658,6 +664,16 @@ jdbc.password=159753
     </servlet-mapping>
 </web-app>
 ```
+
+下面的配置能识别resources/spring包下的所有spring的配置文件。
+
+```xml
+    <init-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>classpath:spring/spring-*.xml</param-value>
+    </init-param>
+```
+
 
 ### pom.xml
 
@@ -1794,7 +1810,7 @@ relay-log=slave-relay-bin
 进入mysql，执行以下命令：
 
 ```mysql
-change master to master_host='172.17.0.12', master_port=3306, master_user='repl', master_password='mysql', master_log_file='master-bin.000007', master_log_pos=0;
+change master to master_host='1.15.172.26', master_port=3306, master_user='repl', master_password='mysql', master_log_file='master-bin.000007', master_log_pos=0;
 start slave;
 show slave status\G;
 ```
@@ -2118,6 +2134,776 @@ public class ProductCategoryDaoTest extends BaseTest {
 }
 ```
 
+## 对关键配置信息进行DES加密
+
+此前连接数据库的账号和密码都是明文，容易泄露，因此需要对这些关键配置信息进行DES加密。
+
+### DESUtil
+
+首先编写一个用于加密和解密的工具类，因为需要先得到加密后的字符串填写到properties文件中，然后当spring读取配置时解密，因此使用的是对称加密。
+
+```java
+public class DESUtil {
+
+   private static Key key;
+   // 设置密钥key
+   private static String KEY_STR = "myKey";
+   private static String CHARSETNAME = "UTF-8";
+   private static String ALGORITHM = "DES";
+
+   static {
+      try {
+         // 生成DES算法对象
+         KeyGenerator generator = KeyGenerator.getInstance(ALGORITHM);
+         // 运用SHA1安全策略
+         SecureRandom secureRandom = SecureRandom.getInstance("SHA1PRNG");
+         // 设置上密钥种子
+         secureRandom.setSeed(KEY_STR.getBytes());
+         // 初始化基于SHA1的算法对象
+         generator.init(secureRandom);
+         // 生成密钥对象
+         key = generator.generateKey();
+         generator = null;
+      } catch (Exception e) {
+         throw new RuntimeException(e);
+      }
+   }
+
+   /**
+    * 获取加密后的信息
+    * 
+    */
+   public static String getEncryptString(String str) {
+      // 基于BASE64编码，接收byte[]并转换成String
+      BASE64Encoder base64encoder = new BASE64Encoder();
+      try {
+         // 按UTF8编码
+         byte[] bytes = str.getBytes(CHARSETNAME);
+         // 获取加密对象
+         Cipher cipher = Cipher.getInstance(ALGORITHM);
+         // 初始化密码信息
+         cipher.init(Cipher.ENCRYPT_MODE, key);
+         // 加密
+         byte[] doFinal = cipher.doFinal(bytes);
+         // byte[]to encode好的String并返回
+         return base64encoder.encode(doFinal);
+      } catch (Exception e) {
+         // TODO: handle exception
+         throw new RuntimeException(e);
+      }
+   }
+
+   /**
+    * 获取解密之后的信息
+    *
+    */
+   public static String getDecryptString(String str) {
+      // 基于BASE64编码，接收byte[]并转换成String
+      BASE64Decoder base64decoder = new BASE64Decoder();
+      try {
+         // 将字符串decode成byte[]
+         byte[] bytes = base64decoder.decodeBuffer(str);
+         // 获取解密对象
+         Cipher cipher = Cipher.getInstance(ALGORITHM);
+         // 初始化解密信息
+         cipher.init(Cipher.DECRYPT_MODE, key);
+         // 解密
+         byte[] doFinal = cipher.doFinal(bytes);
+         // 返回解密之后的信息
+         return new String(doFinal, CHARSETNAME);
+      } catch (Exception e) {
+         // TODO: handle exception
+         throw new RuntimeException(e);
+      }
+   }
+
+   public static void main(String[] args) {
+      System.out.println(getEncryptString("work"));
+      System.out.println(getEncryptString("159753"));
+   }
+
+}
+```
+
+### PropertyPlaceholderConfigurer子类
+
+定义一个继承自`PropertyPlaceholderConfigurer`的子类，这个子类将会被spring-dao.xml配置文件所引用。当spring读取配置文件中的属性时，将会调用`convertProperty`方法获得对应属性的值。可以通过该方法来选择性地将被加密的字符串解密返回。
+
+```java
+package com.yikang.o2o.util;
+
+import org.springframework.beans.factory.config.PropertyPlaceholderConfigurer;
+
+public class EncryptPropertyPlaceholderConfigurer extends PropertyPlaceholderConfigurer {
+
+    // 需要加密的字段数组
+    private String[] encryptPropNames = {"jdbc.username", "jdbc.password"};
+
+    /**
+     * 对关键的属性进行转换
+     */
+    @Override
+    protected String convertProperty(String propertyName, String propertyValue) {
+        if (isEncryptProp(propertyName)) {
+            // 对已加密的字段进行解密工作
+            String decryptValue = DESUtil.getDecryptString(propertyValue);
+            return decryptValue;
+        } else {
+            return propertyValue;
+        }
+    }
+
+    /**
+     * 该属性是否已加密
+     *
+     * @param propertyName
+     * @return
+     */
+    private boolean isEncryptProp(String propertyName) {
+        // 若等于需要加密的field，则已经被加密过了
+        for (String encryptpropertyName : encryptPropNames) {
+            if (encryptpropertyName.equals(propertyName))
+                return true;
+        }
+        return false;
+    }
+}
+```
+
+### 加密后的jdbc.properties
+
+将账号与密码用加密后的字符串代替。
+
+```properties
+jdbc.driver=com.mysql.cj.jdbc.Driver
+#主库：1.15.172.26
+#从库：106.13.85.80
+jdbc.master.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+jdbc.slave.url=jdbc:mysql://106.13.85.80:3306/o2o?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+jdbc.username=zCKAAEaFQUI=
+jdbc.password=IkzrzXv24ew=
+```
+
+### spring-dao.xml引用PropertyPlaceholderConfigurer子类
+
+之前的spring-dao.xml关于properties文件的导入是以下语句：
+
+```xml
+<context:property-placeholder location="classpath:jdbc.properties"/>
+```
+
+现在将它替换成如下：引用我们之前定义的PropertyPlaceholderConfigurer子类：
+
+```xml
+<!--EncryptPropertyPlaceholderConfigurer为自定义的具备解密的类，继承自PropertyPlaceholderConfigurer-->
+<bean class="com.yikang.o2o.util.EncryptPropertyPlaceholderConfigurer">
+    <property name="locations">
+        <list>
+            <value>classpath:jdbc.properties</value>
+        </list>
+    </property>
+    <property name="fileEncoding" value="UTF-8"/>
+</bean>
+```
+
+注意，spring的配置文件都是共通的，后续的redis的properties也可以在这个bean下的list标签下引用。
+
+## 引入缓存技术
+
+### 服务器安装并配置Redis
+
+将redis解压，修改redis.conf，设置支持远程连接以及后台运行：
+
+将bind 127.0.0.1这句话注释掉，同时找到daemonize字段设置为yes，将protected-mode字段设置为no。
+
+到redis目录下执行`make`命令，安装redis。
+
+启动redis服务：
+
+```shell
+src/redis-server redis.conf
+```
+
+连接测试：
+
+```shell
+[root@VM-0-12-centos redis-4.0.2] src/redis-cli 
+127.0.0.1:6379> ping
+PONG
+```
+
+### redis.properties
+
+```properties
+redis.hostname=1.15.172.26
+redis.port=6379
+redis.database=0
+redis.pool.maxActive=100
+redis.pool.maxIdle=20
+redis.pool.maxWait=3000
+redis.pool.testOnBorrow=true
+```
+
+### spring-dao.xml
+
+```xml
+<!--将jdbc与redis的properties配置引入-->
+<bean class="com.yikang.o2o.util.EncryptPropertyPlaceholderConfigurer">
+    <property name="locations">
+        <list>
+            <value>classpath:jdbc.properties</value>
+            <value>classpath:redis.properties</value>
+        </list>
+    </property>
+    <property name="fileEncoding" value="UTF-8"/>
+</bean>
+```
+
+### JedisPoolWriper
+
+这个类就是JedisPool的包装类，给Jedispool提供get和set方法。这个类将会被spring-redis.xml作为bean注入，这个bean将会被注入到其他几个工具类bean中。
+
+```java
+/**
+ * 强指定redis的JedisPool接口构造函数，这样才能在centos成功创建jedispool
+ */
+public class JedisPoolWriper {
+    /**
+     * Redis连接池对象
+     */
+    private JedisPool jedisPool;
+
+    public JedisPoolWriper(final JedisPoolConfig poolConfig, final String host,
+                           final int port) {
+        try {
+            jedisPool = new JedisPool(poolConfig, host, port);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 获取Redis连接池对象
+     *
+     * @return
+     */
+    public JedisPool getJedisPool() {
+        return jedisPool;
+    }
+
+    /**
+     * 注入Redis连接池对象
+     *
+     * @param jedisPool
+     */
+    public void setJedisPool(JedisPool jedisPool) {
+        this.jedisPool = jedisPool;
+    }
+
+}
+```
+
+### JedisUtil
+
+这是一个工具类，它持有JedisPool的引用，向外提供不同类型key的各种方法。
+
+不同类型的key在JedisUtil类中对应不同的子类，这些子类将会配置在spring-redis.xml中作为单例的bean，同时接受JedisPoolWriper类对象对应的bean来持有JedisPool的引用，在所需要的场景直接注入需要类型的bean即可。
+
+各种类型的增删改之类的方法这里省略。
+
+```java
+public class JedisUtil {
+    /**
+     * 缓存生存时间
+     */
+    private final int expire = 60000;
+    /**
+     * 操作Key的方法
+     */
+    public Keys KEYS;
+    /**
+     * 对存储结构为String类型的操作
+     */
+    public Strings STRINGS;
+    /**
+     * 对存储结构为List类型的操作
+     */
+    public Lists LISTS;
+    /**
+     * 对存储结构为Set类型的操作
+     */
+    public Sets SETS;
+    /**
+     * 对存储结构为HashMap类型的操作
+     */
+    public Hash HASH;
+
+    /**
+     * Redis连接池对象
+     */
+    private JedisPool jedisPool;
+    
+    public class Keys{}
+    public class Strings{}
+    public class Lists{}
+    public class Sets{}
+    public class Hash{}
+}
+```
+
+### spring-redis.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+   xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context
+    http://www.springframework.org/schema/context/spring-context.xsd">
+   <!-- Redis连接池的设置 -->
+   <bean id="jedisPoolConfig" class="redis.clients.jedis.JedisPoolConfig">
+      <!-- 控制一个pool可分配多少个jedis实例 -->
+      <property name="maxTotal" value="${redis.pool.maxActive}" />
+      <!-- 连接池中最多可空闲maxIdle个连接 ，这里取值为20，表示即使没有数据库连接时依然可以保持20空闲的连接，而不被清除，随时处于待命状态。 -->
+      <property name="maxIdle" value="${redis.pool.maxIdle}" />
+      <!-- 最大等待时间:当没有可用连接时,连接池等待连接被归还的最大时间(以毫秒计数),超过时间则抛出异常 -->
+      <property name="maxWaitMillis" value="${redis.pool.maxWait}" />
+      <!-- 在获取连接的时候检查有效性 -->
+      <property name="testOnBorrow" value="${redis.pool.testOnBorrow}" />
+   </bean>
+
+   <!-- 创建Redis连接池，并做相关配置 -->
+   <bean id="jedisWritePool" class="com.yikang.o2o.cache.JedisPoolWriper"
+      depends-on="jedisPoolConfig">
+      <constructor-arg index="0" ref="jedisPoolConfig" />
+      <constructor-arg index="1" value="${redis.hostname}" />
+      <constructor-arg index="2" value="${redis.port}" type="int" />
+   </bean>
+
+   <!-- 创建Redis工具类，封装好Redis的连接以进行相关的操作 -->
+   <bean id="jedisUtil" class="com.yikang.o2o.cache.JedisUtil" scope="singleton">
+      <property name="jedisPool">
+         <ref bean="jedisWritePool" />
+      </property>
+   </bean>
+   <!-- Redis的key操作 -->
+   <bean id="jedisKeys" class="com.yikang.o2o.cache.JedisUtil$Keys"
+      scope="singleton">
+      <constructor-arg ref="jedisUtil"></constructor-arg>
+   </bean>
+   <!-- Redis的Strings操作 -->
+   <bean id="jedisStrings" class="com.yikang.o2o.cache.JedisUtil$Strings"
+      scope="singleton">
+      <constructor-arg ref="jedisUtil"></constructor-arg>
+   </bean>
+   <!-- Redis的Lists操作 -->
+   <bean id="jedisLists" class="com.yikang.o2o.cache.JedisUtil$Lists"
+      scope="singleton">
+      <constructor-arg ref="jedisUtil"></constructor-arg>
+   </bean>
+   <!-- Redis的Sets操作 -->
+   <bean id="jedisSets" class="com.yikang.o2o.cache.JedisUtil$Sets"
+      scope="singleton">
+      <constructor-arg ref="jedisUtil"></constructor-arg>
+   </bean>
+   <!-- Redis的HashMap操作 -->
+   <bean id="jedisHash" class="com.yikang.o2o.cache.JedisUtil$Hash"
+      scope="singleton">
+      <constructor-arg ref="jedisUtil"></constructor-arg>
+   </bean>
+</beans>    
+```
+
+### 缓存方案
+
+这里采用的是非常简单的方案，对于所有取的操作，如果redis中没有对应key的数据（这个key自定义，能区分想要查询的信息即可），那么从数据库中取出放入redis中，然后返回；如果redis中存在对应key的数据，那么直接从redis中取。对于所有写的操作，全部走数据库，并且将redis中对应key的缓存清空。
+
+Object与String之间的转化用jakson包来实现。
+
+```java
+//obj->string
+ObjectMapper mapper = new ObjectMapper();
+String jsonString = mapper.writeValueAsString(headLineList);
+
+//string->obj
+String jsonString = jedisStrings.get(key);
+// 指定要将string转换成的集合类型
+JavaType javaType = mapper.getTypeFactory().constructParametricType(ArrayList.class, HeadLine.class);
+HeadLine headLineList = mapper.readValue(jsonString, javaType);
+```
+
+## MySql主从数据库重置
+
+没想到过了几天从服务器的数据库就被劫持了=。=，说要拿比特币交换。然后我就把数据库删了，重新建立主从同步。
+
+在从服务器上将主从关联重置：
+
+```mysql
+stop slave;
+reset slave;
+```
+
+然后重启。之后将主服务器上的数据库备份成sql文件，将数据库删除（如果可以重新定位到主服务器的数据库为空时的log file以及log pos，那么就不需要删除数据库然后再还原了，但是我并没有记录下来，所以只好重新由sql文件导入，以便将所有的操作同步更新到从数据库）。
+
+注意，在导入sql文件之前应该重新建立主从关联，且要注意保证master_log_file以及master_log_pos要一致。这个可以通过`show master status`来查看。
+
+## 密码加密存储
+
+数据库中的密码需要被加密。登录验证时，将用户输入的密码加密，与数据库中的密文进行匹配。
+
+这里采用的是MD5加密。
+
+```java
+public class MD5 {
+
+	/**
+	 * 对传入的String进行MD5加密
+	 * 
+	 * @param s
+	 * @return
+	 */
+	public static final String getMd5(String s) {
+		// 16进制数组
+		char hexDigits[] = { '5', '0', '5', '6', '2', '9', '6', '2', '5', 'q', 'b', 'l', 'e', 's', 's', 'y' };
+		try {
+			char str[];
+			// 将传入的字符串转换成byte数组
+			byte strTemp[] = s.getBytes();
+			// 获取MD5加密对象
+			MessageDigest mdTemp = MessageDigest.getInstance("MD5");
+			// 传入需要加密的目标数组
+			mdTemp.update(strTemp);
+			// 获取加密后的数组
+			byte md[] = mdTemp.digest();
+			int j = md.length;
+			str = new char[j * 2];
+			int k = 0;
+			// 将数组做位移
+			for (int i = 0; i < j; i++) {
+				byte byte0 = md[i];
+				str[k++] = hexDigits[byte0 >>> 4 & 0xf];
+				str[k++] = hexDigits[byte0 & 0xf];
+			}
+			// 转换成String并返回
+			return new String(str);
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	public static void main(String[] args) {
+		System.out.println(MD5.getMd5("123456"));
+	}
+}
+```
+
+## 拦截器实现登录验证以及权限认证
+
+![img](../pic/74.png)
+
+当设置多个拦截器时，先按顺序调用preHandle方法，然后逆序调用每个拦截器的postHandle和afterCompletion方法。
+
+这里写一个例子，拦截实现登录验证：
+
+### ShopLoginInterceptor
+
+```java
+/**
+ * 店家管理系统登录验证拦截器
+ * 
+ */
+public class ShopLoginInterceptor extends HandlerInterceptorAdapter {
+	/**
+	 * 主要做事前拦截，即用户操作发生前，改写preHandle里的逻辑，进行拦截
+	 */
+	@Override
+	public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+			throws Exception {
+		// 从session中取出用户信息来
+		Object userObj = request.getSession().getAttribute("user");
+		if (userObj != null) {
+			// 若用户信息不为空则将session里的用户信息转换成PersonInfo实体类对象
+			PersonInfo user = (PersonInfo) userObj;
+			// 做空值判断，确保userId不为空并且该帐号的可用状态为1，并且用户类型为店家
+			if (user != null && user.getUserId() != null && user.getUserId() > 0 && user.getEnableStatus() == 1)
+				// 若通过验证则返回true,拦截器返回true之后，用户接下来的操作得以正常执行
+				return true;
+		}
+		// 若不满足登录验证，则直接跳转到帐号登录页面
+		PrintWriter out = response.getWriter();
+		out.println("<html>");
+		out.println("<script>");
+		out.println("window.open ('" + request.getContextPath() + "/local/login?usertype=2','_self')");
+		out.println("</script>");
+		out.println("</html>");
+		return false;
+	}
+}
+```
+### spring-web.xml
+
+```xml
+<mvc:interceptors>
+	<!-- 校验是否已登录了店家管理系统的拦截器 -->
+	<mvc:interceptor>
+		<mvc:mapping path="/shopadmin/**" />
+		<bean id="ShopInterceptor"
+			class="com.yikang.o2o.interceptor.shopadmin.ShopLoginInterceptor" />
+	</mvc:interceptor>
+	<!-- 校验是否对该店铺有操作权限的拦截器 -->
+	<mvc:interceptor>
+		<mvc:mapping path="/shopadmin/**" />
+		<!-- shoplist page -->
+		<mvc:exclude-mapping path="/shopadmin/shoplist" />
+		<mvc:exclude-mapping path="/shopadmin/getshoplist" />
+		<!-- shopregister page -->
+		<mvc:exclude-mapping path="/shopadmin/getshopinitinfo" />
+		<mvc:exclude-mapping path="/shopadmin/registershop" />
+		<mvc:exclude-mapping path="/shopadmin/shopoperation" />
+		<!-- shopmanage page -->
+		<mvc:exclude-mapping path="/shopadmin/shopmanagement" />
+		<mvc:exclude-mapping path="/shopadmin/getshopmanagementinfo" />
+		<bean id="ShopPermissionInterceptor"
+			class="com.yikang.o2o.interceptor.shopadmin.ShopPermissionInterceptor" />
+	</mvc:interceptor>
+	<!-- 超级管理员系统拦截部分 -->
+	<mvc:interceptor>
+		<mvc:mapping path="/superadmin/**" />
+		<mvc:exclude-mapping path="/superadmin/login" />
+		<mvc:exclude-mapping path="/superadmin/logincheck" />
+		<mvc:exclude-mapping path="/superadmin/main" />
+		<mvc:exclude-mapping path="/superadmin/top" />
+		<mvc:exclude-mapping path="/superadmin/clearcache4area" />
+		<mvc:exclude-mapping path="/superadmin/clearcache4headline" />
+		<mvc:exclude-mapping path="/superadmin/clearcache4shopcategory" />
+		<bean id="SuperAdminLoginInterceptor"
+			class="com.yikang.o2o.interceptor.superadmin.SuperAdminLoginInterceptor" />
+	</mvc:interceptor>
+</mvc:interceptors>
+```
+## SpringMVC迁移至SpringBoot
+
+注意，这里迁移的是未配置mysql主从同步的版本！
+
+### application.properties
+
+```properties
+server.port=8080
+#默认是直接通过/访问的，这样设置使得需要加上/o2o前缀才能访问
+server.servlet.context-path=/o2o
+
+#DataSource
+#数据库驱动
+jdbc.driver=com.mysql.cj.jdbc.Driver
+#数据库链接
+jdbc.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC
+#数据库用户名（已加密）
+jdbc.username=WnplV/ietfQ=
+#数据库密码（已加密）
+jdbc.password=RxQNfAQRZdFbfLs72BFqeQ==
+
+#Mybatis
+mybatis_config_file=mybatis-config.xml
+mapper_path=/mapper/**.xml
+type_alias_package=com.yikang.entity
+
+#Redis配置
+redis.hostname=127.0.0.1
+redis.port=6379
+redis.pool.maxActive=100
+redis.pool.maxIdle=20
+redis.pool.maxWait=3000
+redis.pool.testOnBorrow=true
+
+#Kaptcha的配置
+kaptcha.border=no
+kaptcha.textproducer.font.color=red
+kaptcha.image.width=135
+kaptcha.textproducer.char.string=ACDEFHKPRSTWX345679
+kaptcha.image.height=50
+kaptcha.textproducer.font.size=43
+kaptcha.noise.color=black
+kaptcha.textproducer.char.length=4
+kaptcha.textproducer.font.names=Arial
+
+#Path管理
+win.base.path=D:/projectdev/image
+linux.base.path=/Users/baidu/work/image
+shop.relevant.path=/upload/images/item/shop/
+headline.relevant.path=/upload/images/item/headtitle/
+shopcategory.relevant.path=/upload/images/item/shopcategory/
+```
+
+### mybatis-config.xml
+
+这个文件与SpringMVC的没什么不同。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration
+        PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <!-- 配置全局属性 -->
+    <settings>
+        <!-- 使用jdbc的getGeneratedKeys获取数据库自增主键值 -->
+        <setting name="useGeneratedKeys" value="true" />
+
+        <!-- 使用列标签替换列别名 默认:true -->
+        <setting name="useColumnLabel" value="true" />
+
+        <!-- 开启驼峰命名转换:Table{create_time} -> Entity{createTime} -->
+        <setting name="mapUnderscoreToCamelCase" value="true" />
+    </settings>
+</configuration>
+```
+
+### Dao层的迁移
+
+在原来的SpringMVC的spring-dao.xml中，我们配置了三个bean：dataSource, sqlSessionFactory以及用于扫描Dao接口包的bean。
+
+在Springboot中我们需要用类的方式实现前两个，而第三个只需要通过注解来扫描。
+
+我们会发现SpringBoot的配置类是与旧xml中的bean的配置是一一对应的。
+
+以下是原spring-dao.xml中的配置：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+    <context:property-placeholder location="classpath:jdbc.properties"/>
+
+    <!-- 2.数据库连接池 -->
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="${jdbc.driver}"/>
+        <!-- 省略 -->
+    </bean>
+
+    <!-- 3.配置SqlSessionFactory对象 -->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="dataSource" ref="dataSource"/>
+        <!-- 省略 -->
+    </bean>
+
+    <!-- 4.配置扫描Dao接口包，动态实现Dao接口，注入到spring容器中 -->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+        <!-- 省略 -->
+    </bean>
+</beans>
+```
+
+#### bean：dataSource
+
+```java
+@Configuration
+// 配置mybatis mapper的扫描路径
+@MapperScan("com.yikang.o2o.dao")
+public class DataSourceConfiguration {
+	@Value("${jdbc.driver}")
+	private String jdbcDriver;
+	@Value("${jdbc.url}")
+	private String jdbcUrl;
+	@Value("${jdbc.username}")
+	private String jdbcUsername;
+	@Value("${jdbc.password}")
+	private String jdbcPassword;
+
+	/**
+	 * 生成与spring-dao.xml对应的bean dataSource
+	 * 
+	 * @return
+	 * @throws PropertyVetoException
+	 */
+	@Bean(name = "dataSource")
+	public ComboPooledDataSource createDataSource() throws PropertyVetoException {
+		// 生成datasource实例
+		ComboPooledDataSource dataSource = new ComboPooledDataSource();
+		// 跟配置文件一样设置以下信息
+		// 驱动
+		dataSource.setDriverClass(jdbcDriver);
+		// 数据库连接URL
+		dataSource.setJdbcUrl(jdbcUrl);
+		// 设置用户名
+		dataSource.setUser(DESUtil.getDecryptString(jdbcUsername));
+		// 设置用户密码
+		dataSource.setPassword(DESUtil.getDecryptString(jdbcPassword));
+		// 配置c3p0连接池的私有属性
+		// 连接池最大线程数
+		dataSource.setMaxPoolSize(30);
+		// 连接池最小线程数
+		dataSource.setMinPoolSize(10);
+		dataSource.setInitialPoolSize(10);
+		// 关闭连接后不自动commit
+		dataSource.setAutoCommitOnClose(false);
+		// 连接超时时间
+		dataSource.setCheckoutTimeout(10000);
+		// 连接失败重试次数
+		dataSource.setAcquireRetryAttempts(2);
+		return dataSource;
+	}
+
+}
+```
+
+#### bean：sqlSessionFactory
+
+注意，静态变量不能直接通过`@Value()`来注入值，需要一个非静态的set方法，在该方法上用`@Value()`来注解即可。
+
+`sqlSessionFactory`需要引用我们配置好的dataSource，我们只需要把它注入进来就行了。
+
+```java
+@Configuration
+public class SessionFactoryConfiguration {
+	// mybatis-config.xml配置文件的路径
+	private static String mybatisConfigFile;
+
+	@Value("${mybatis_config_file}")
+	public void setMybatisConfigFile(String mybatisConfigFile) {
+		SessionFactoryConfiguration.mybatisConfigFile = mybatisConfigFile;
+	}
+
+	// mybatis mapper文件所在路径
+	private static String mapperPath;
+
+	@Value("${mapper_path}")
+	public void setMapperPath(String mapperPath) {
+		SessionFactoryConfiguration.mapperPath = mapperPath;
+	}
+
+	// 实体类所在的package
+	@Value("${type_alias_package}")
+	private String typeAliasPackage;
+
+	@Autowired
+	private DataSource dataSource;
+
+	/**
+	 * 创建sqlSessionFactoryBean 实例 并且设置configtion 设置mapper 映射路径 设置datasource数据源
+	 * 
+	 * @return
+	 * @throws IOException
+	 */
+	@Bean(name = "sqlSessionFactory")
+	public SqlSessionFactoryBean createSqlSessionFactoryBean() throws IOException {
+		SqlSessionFactoryBean sqlSessionFactoryBean = new SqlSessionFactoryBean();
+		// 设置mybatis configuration 扫描路径
+		sqlSessionFactoryBean.setConfigLocation(new ClassPathResource(mybatisConfigFile));
+		// 添加mapper 扫描路径
+		PathMatchingResourcePatternResolver pathMatchingResourcePatternResolver = new PathMatchingResourcePatternResolver();
+		String packageSearchPath = ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX + mapperPath;
+		sqlSessionFactoryBean.setMapperLocations(pathMatchingResourcePatternResolver.getResources(packageSearchPath));
+		// 设置dataSource
+		sqlSessionFactoryBean.setDataSource(dataSource);
+		// 设置typeAlias 包扫描路径
+		sqlSessionFactoryBean.setTypeAliasesPackage(typeAliasPackage);
+		return sqlSessionFactoryBean;
+	}
+
+}
+```
+
 ## 其他坑
 
 ### mybatis中#{}与${}
@@ -2180,9 +2966,9 @@ tail -n 1000 catalina.out
 
 发现是因为服务器上没有创建目录/home/yikang/publicPro/upload：
 
-![](/home/yikang/Document/gitRep/Note/pic/72.png)
+![](../pic/72.png)
 
-创建后成功执行。
+创建后成功运行tomcat。
 
 注意，访问url需要带上端口号8080/项目名，如果将tomcat的端口改成默认端口80就可以把端口省略，如果想把项目名省略，可以在server.xml里配置Context：
 
@@ -2191,3 +2977,26 @@ tail -n 1000 catalina.out
 ```
 
 war包是放在tomcat的webapps目录下，然后tomcat会自动将war解压成o2o目录，其中包含所有的文件包括资源文件js、css等。
+
+### Redis的保护模式
+
+远程连接Redis时，报错：
+
+![](../pic/73.png)
+
+这需要去修改redis.conf的protected-mode字段为no。然后重启redis。
+
+```shell
+[root@VM-0-12-centos redis-4.0.2] ps -e |grep redis
+31697 ?        00:00:13 redis-server
+[root@VM-0-12-centos redis-4.0.2] ps -ef |grep redis
+root     11536 11213  0 16:59 pts/0    00:00:00 grep --color=auto redis
+root     31697     1  0 11:33 ?        00:00:13 src/redis-server *:6379
+[root@VM-0-12-centos redis-4.0.2] kill -9 31697
+[root@VM-0-12-centos redis-4.0.2] ps -e |grep redis
+[root@VM-0-12-centos redis-4.0.2] src/redis-server redis.conf 
+11695:C 24 Mar 17:00:26.129  oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+11695:C 24 Mar 17:00:26.129  Redis version=4.0.2, bits=64, commit=00000000, modified=0, pid=11695, just started
+11695:C 24 Mar 17:00:26.129  Configuration loaded
+```
+
