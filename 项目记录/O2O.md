@@ -2699,9 +2699,9 @@ jdbc.driver=com.mysql.cj.jdbc.Driver
 #数据库链接
 jdbc.url=jdbc:mysql://1.15.172.26:3306/o2o?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=UTC
 #数据库用户名（已加密）
-jdbc.username=WnplV/ietfQ=
+jdbc.username=zCKAAEaFQUI=
 #数据库密码（已加密）
-jdbc.password=RxQNfAQRZdFbfLs72BFqeQ==
+jdbc.password=IkzrzXv24ew=
 
 #Mybatis
 mybatis_config_file=mybatis-config.xml
@@ -2709,7 +2709,7 @@ mapper_path=/mapper/**.xml
 type_alias_package=com.yikang.entity
 
 #Redis配置
-redis.hostname=127.0.0.1
+redis.hostname=1.15.172.26
 redis.port=6379
 redis.pool.maxActive=100
 redis.pool.maxIdle=20
@@ -2904,6 +2904,656 @@ public class SessionFactoryConfiguration {
 }
 ```
 
+### Service层的迁移
+
+#### TransactionManagementConfigurer
+
+在SpringMVC中，context标签用于扫描service包下所有使用注解的类型，但是在SpringBoot中就不需要了，在SpringBoot的启动类标有注解@SpringBootApplication，用于扫描全package的扫描。
+
+在旧spring-service.xml中，定义了一个transactionManager的bean，这个bean被后面的`tx:annotation-driven`标签引用。对于这个标签，在SpringBoot中用继承的方式去配置。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+    <!-- 扫描service包下所有使用注解的类型 -->
+    <context:component-scan base-package="com.yikang.o2o.service" />
+
+    <!-- 配置事务管理器 -->
+    <bean id="transactionManager"
+          class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <!-- 注入数据库连接池 -->
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+
+    <!-- 配置基于注解的声明式事务 -->
+    <tx:annotation-driven transaction-manager="transactionManager" />
+</beans>
+```
+
+ 对应的SpringBoot的配置类如下：
+
+```java
+
+/**
+ * 对标spring-service里面的transactionManager
+ * 继承TransactionManagementConfigurer是因为开启annotation-driven
+ * 
+ *
+ */
+@Configuration
+// 首先使用注解 @EnableTransactionManagement 开启事务支持后
+// 在Service方法上添加注解 @Transactional 便可
+@EnableTransactionManagement
+public class TransactionManagementConfiguration implements TransactionManagementConfigurer {
+
+	@Autowired
+	// 注入DataSourceConfiguration里边的dataSource,通过createDataSource()获取
+	private DataSource dataSource;
+
+	@Override
+	/**
+	 * 关于事务管理，需要返回PlatformTransactionManager的实现
+	 */
+	public PlatformTransactionManager annotationDrivenTransactionManager() {
+		return new DataSourceTransactionManager(dataSource);
+	}
+
+}
+```
+
+#### Redis配置的迁移
+
+在SpringMVC的spring-redis,xml中我们定义了jedisPoolConfig, jedisWritePool, jedisUtil, jedisKeys, jedisString等bean，那么在SpringBoot中的配置类中我们也做相应的配置。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+	<!-- Redis连接池的设置 -->
+	<bean id="jedisPoolConfig" class="redis.clients.jedis.JedisPoolConfig">
+		<property name="maxTotal" value="${redis.pool.maxActive}" />
+		<!-- 省略 -->
+	</bean>
+
+	<!-- 创建Redis连接池，并做相关配置 -->
+	<bean id="jedisWritePool" class="com.yikang.o2o.cache.JedisPoolWriper"
+		depends-on="jedisPoolConfig">
+		<constructor-arg index="0" ref="jedisPoolConfig" />
+        <!-- 省略 -->
+	</bean>
+
+	<!-- 创建Redis工具类，封装好Redis的连接以进行相关的操作 -->
+	<bean id="jedisUtil" class="com.yikang.o2o.cache.JedisUtil" scope="singleton">
+		<property name="jedisPool">
+			<ref bean="jedisWritePool" />
+		</property>
+	</bean>
+	<!-- Redis的key操作 -->
+	<bean id="jedisKeys" class="com.yikang.o2o.cache.JedisUtil$Keys"
+		scope="singleton">
+		<constructor-arg ref="jedisUtil"></constructor-arg>
+	</bean>
+	<!-- Redis的Strings操作 -->
+	<bean id="jedisStrings" class="com.yikang.o2o.cache.JedisUtil$Strings"
+		scope="singleton">
+		<constructor-arg ref="jedisUtil"></constructor-arg>
+	</bean>
+	<!-- 省略 -->
+</beans>    
+```
+
+SpringBoot中对应的redis配置类如下：
+
+```java
+/**
+ * spring-redis.xml里的配置
+ * 
+ * @author xiangze
+ *
+ */
+@Configuration
+public class RedisConfiguration {
+	@Value("${redis.hostname}")
+	private String hostname;
+	@Value("${redis.port}")
+	private int port;
+	@Value("${redis.pool.maxActive}")
+	private int maxTotal;
+	@Value("${redis.pool.maxIdle}")
+	private int maxIdle;
+	@Value("${redis.pool.maxWait}")
+	private long maxWaitMillis;
+	@Value("${redis.pool.testOnBorrow}")
+	private boolean testOnBorrow;
+
+	@Autowired
+	private JedisPoolConfig jedisPoolConfig;
+	@Autowired
+	private JedisPoolWriper jedisWritePool;
+	@Autowired
+	private JedisUtil jedisUtil;
+
+	/**
+	 * 创建redis连接池的设置
+	 * 
+	 * @return
+	 */
+	@Bean(name = "jedisPoolConfig")
+	public JedisPoolConfig createJedisPoolConfig() {
+		JedisPoolConfig jedisPoolConfig = new JedisPoolConfig();
+		// 控制一个pool可分配多少个jedis实例
+		jedisPoolConfig.setMaxTotal(maxTotal);
+		// 连接池中最多可空闲maxIdle个连接 ，这里取值为20，
+		// 表示即使没有数据库连接时依然可以保持20空闲的连接，
+		// 而不被清除，随时处于待命状态。
+		jedisPoolConfig.setMaxIdle(maxIdle);
+		// 最大等待时间:当没有可用连接时,
+		// 连接池等待连接被归还的最大时间(以毫秒计数),超过时间则抛出异常
+		jedisPoolConfig.setMaxWaitMillis(maxWaitMillis);
+		// 在获取连接的时候检查有效性
+		jedisPoolConfig.setTestOnBorrow(testOnBorrow);
+		return jedisPoolConfig;
+	}
+
+	/**
+	 * 创建Redis连接池，并做相关配置
+	 * 
+	 * @return
+	 */
+	@Bean(name = "jedisWritePool")
+	public JedisPoolWriper createJedisPoolWriper() {
+		JedisPoolWriper jedisPoolWriper = new JedisPoolWriper(jedisPoolConfig, hostname, port);
+		return jedisPoolWriper;
+	}
+
+	/**
+	 * 创建Redis工具类，封装好Redis的连接以进行相关的操作
+	 * 
+	 * @return
+	 */
+	@Bean(name = "jedisUtil")
+	public JedisUtil createJedisUtil() {
+		JedisUtil jedisUtil = new JedisUtil();
+		jedisUtil.setJedisPool(jedisWritePool);
+		return jedisUtil;
+	}
+
+	/**
+	 * Redis的key操作
+	 * 
+	 * @return
+	 */
+	@Bean(name = "jedisKeys")
+	public JedisUtil.Keys createJedisKeys() {
+		JedisUtil.Keys jedisKeys = jedisUtil.new Keys();
+		return jedisKeys;
+	}
+
+	/**
+	 * Redis的Strings操作
+	 * 
+	 * @return
+	 */
+	@Bean(name = "jedisStrings")
+	public JedisUtil.Strings createJedisStrings() {
+		JedisUtil.Strings jedisStrings = jedisUtil.new Strings();
+		return jedisStrings;
+	}
+}
+```
+
+### Web层的迁移
+
+#### spring-web.xml
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans>
+    <!-- 配置SpringMVC -->
+    <!-- 1.开启SpringMVC注解模式 -->
+    <mvc:annotation-driven/>
+
+    <!-- 2.静态资源默认servlet配置 (1)加入对静态资源的处理：js,gif,png (2)允许使用"/"做整体映射 -->
+    <mvc:resources mapping="/resources/**" location="/resources/"/>
+    <mvc:default-servlet-handler/>
+
+    <!-- 3.定义视图解析器 -->
+    <bean id="viewResolver"
+          class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <!-- 省略 -->
+    </bean>
+    <!-- 文件上传解析器 -->
+    <bean id="multipartResolver"
+          class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+        <!-- 省略 -->
+    </bean>
+
+    <!-- 4.扫描web相关(controller)的bean -->
+    <context:component-scan base-package="com.yikang.o2o.web"/>
+</beans>
+```
+
+#### WebMvcConfigurer
+
+```java
+/**
+ * 开启Mvc,自动注入spring容器。 WebMvcConfigurerAdapter：配置视图解析器
+ * 当一个类实现了这个接口（ApplicationContextAware）之后，这个类就可以方便获得ApplicationContext中的所有bean
+ * 
+ */
+@Configuration
+// 等价于<mvc:annotation-driven/>
+@EnableWebMvc
+public class MvcConfiguration implements WebMvcConfigurer, ApplicationContextAware {
+	// Spring容器
+	private ApplicationContext applicationContext;
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;
+	}
+
+	/**
+	 * 静态资源配置
+	 * 
+	 * @param registry
+	 */
+	@Override
+	public void addResourceHandlers(ResourceHandlerRegistry registry) {
+		// registry.addResourceHandler("/resources/**").addResourceLocations("classpath:/resources/");
+		registry.addResourceHandler("/upload/**").addResourceLocations("file:/Users/baidu/work/image/upload/");
+	}
+
+	/**
+	 * 定义默认的请求处理器
+	 */
+	@Override
+	public void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) {
+		configurer.enable();
+	}
+
+	/**
+	 * 创建viewResolver
+	 * 
+	 * @return
+	 */
+	@Bean(name = "viewResolver")
+	public ViewResolver createViewResolver() {
+		InternalResourceViewResolver viewResolver = new InternalResourceViewResolver();
+		// 设置Spring 容器
+		viewResolver.setApplicationContext(this.applicationContext);
+		// 取消缓存
+		viewResolver.setCache(false);
+		// 设置解析的前缀
+		viewResolver.setPrefix("/WEB-INF/html/");
+		// 设置试图解析的后缀
+		viewResolver.setSuffix(".html");
+		return viewResolver;
+	}
+
+	/**
+	 * 文件上传解析器
+	 * 
+	 * @return
+	 */
+	@Bean(name = "multipartResolver")
+	public CommonsMultipartResolver createMultipartResolver() {
+		CommonsMultipartResolver multipartResolver = new CommonsMultipartResolver();
+		multipartResolver.setDefaultEncoding("utf-8");
+		// 1024 * 1024 * 20 = 20M
+		multipartResolver.setMaxUploadSize(20971520);
+		multipartResolver.setMaxInMemorySize(20971520);
+		return multipartResolver;
+	}
+
+	@Value("${kaptcha.border}")
+	private String border;
+
+	@Value("${kaptcha.textproducer.font.color}")
+	private String fcolor;
+
+	@Value("${kaptcha.image.width}")
+	private String width;
+
+	@Value("${kaptcha.textproducer.char.string}")
+	private String cString;
+
+	@Value("${kaptcha.image.height}")
+	private String height;
+
+	@Value("${kaptcha.textproducer.font.size}")
+	private String fsize;
+
+	@Value("${kaptcha.noise.color}")
+	private String nColor;
+
+	@Value("${kaptcha.textproducer.char.length}")
+	private String clength;
+
+	@Value("${kaptcha.textproducer.font.names}")
+	private String fnames;
+
+	/**
+	 * 由于web.xml不生效了，需要在这里配置Kaptcha验证码Servlet
+	 */
+	@Bean
+	public ServletRegistrationBean<KaptchaServlet> servletRegistrationBean() throws ServletException {
+		ServletRegistrationBean<KaptchaServlet> servlet = new ServletRegistrationBean<KaptchaServlet>(new KaptchaServlet(), "/Kaptcha");
+		servlet.addInitParameter("kaptcha.border", border);// 无边框
+		servlet.addInitParameter("kaptcha.textproducer.font.color", fcolor); // 字体颜色
+		servlet.addInitParameter("kaptcha.image.width", width);// 图片宽度
+		servlet.addInitParameter("kaptcha.textproducer.char.string", cString);// 使用哪些字符生成验证码
+		servlet.addInitParameter("kaptcha.image.height", height);// 图片高度
+		servlet.addInitParameter("kaptcha.textproducer.font.size", fsize);// 字体大小
+		servlet.addInitParameter("kaptcha.noise.color", nColor);// 干扰线的颜色
+		servlet.addInitParameter("kaptcha.textproducer.char.length", clength);// 字符个数
+		servlet.addInitParameter("kaptcha.textproducer.font.names", fnames);// 字体
+		return servlet;
+	}
+
+	/**
+	 * 添加拦截器配置
+	 */
+	@Override
+	public void addInterceptors(InterceptorRegistry registry) {
+		/** 店家管理系统拦截部分 **/
+		String interceptPath = "/shopadmin/**";
+		// 注册拦截器
+		InterceptorRegistration loginIR = registry.addInterceptor(new ShopLoginInterceptor());
+		// 配置拦截的路径
+		loginIR.addPathPatterns(interceptPath);
+		/** shopauthmanagement page **/
+		loginIR.excludePathPatterns("/shopadmin/addshopauthmap");
+		/** scan **/
+		loginIR.excludePathPatterns("/shopadmin/adduserproductmap");
+		loginIR.excludePathPatterns("/shopadmin/exchangeaward");
+		// 还可以注册其它的拦截器
+		InterceptorRegistration permissionIR = registry.addInterceptor(new ShopPermissionInterceptor());
+		// 配置拦截的路径
+		permissionIR.addPathPatterns(interceptPath);
+		// 配置不拦截的路径
+		/** shoplist page **/
+		permissionIR.excludePathPatterns("/shopadmin/shoplist");
+		permissionIR.excludePathPatterns("/shopadmin/getshoplist");
+		/** shopregister page **/
+		permissionIR.excludePathPatterns("/shopadmin/getshopinitinfo");
+		permissionIR.excludePathPatterns("/shopadmin/registershop");
+		permissionIR.excludePathPatterns("/shopadmin/shopoperation");
+		/** shopmanage page **/
+		permissionIR.excludePathPatterns("/shopadmin/shopmanagement");
+		permissionIR.excludePathPatterns("/shopadmin/getshopmanagementinfo");
+		/** shopauthmanagement page **/
+		permissionIR.excludePathPatterns("/shopadmin/addshopauthmap");
+		/** scan **/
+		permissionIR.excludePathPatterns("/shopadmin/adduserproductmap");
+		permissionIR.excludePathPatterns("/shopadmin/exchangeaward");
+		/** 超级管理员系统拦截部分 **/
+		interceptPath = "/superadmin/**";
+		// 注册拦截器
+		InterceptorRegistration superadminloginIR = registry.addInterceptor(new SuperAdminLoginInterceptor());
+		// 配置拦截的路径
+		superadminloginIR.addPathPatterns(interceptPath);
+		superadminloginIR.excludePathPatterns("/superadmin/login");
+		superadminloginIR.excludePathPatterns("/superadmin/logincheck");
+		superadminloginIR.excludePathPatterns("/superadmin/main");
+		superadminloginIR.excludePathPatterns("/superadmin/top");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4area");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4headline");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4shopcategory");
+	}
+
+}
+```
+
+### 验证码的迁移
+
+因为SpringBoot已经不再使用web.xml，因此需要另外配置。
+
+在SpringMVC中，验证码是以Servlet的形式配置的，那么我们可以将验证码Servlet作为一个bean放到spring容器中。
+
+#### web.xml
+
+```xml
+<servlet>
+    <servlet-name>Kaptcha</servlet-name>
+    <servlet-class>com.google.code.kaptcha.servlet.KaptchaServlet</servlet-class>
+    <!-- 省略 -->
+</servlet>
+```
+
+#### WebMvcConfigurer
+
+同样是在WebMvcConfigurer中配置验证码的bean：
+
+```java
+/**
+ * 开启Mvc,自动注入spring容器。 WebMvcConfigurerAdapter：配置视图解析器
+ * 当一个类实现了这个接口（ApplicationContextAware）之后，这个类就可以方便获得ApplicationContext中的所有bean
+ * 
+ */
+@Configuration
+// 等价于<mvc:annotation-driven/>
+@EnableWebMvc
+public class MvcConfiguration implements WebMvcConfigurer, ApplicationContextAware {
+	// Spring容器
+	private ApplicationContext applicationContext;
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;
+	}
+    
+    //省略其他配置
+
+	@Value("${kaptcha.border}")
+	private String border;
+
+	@Value("${kaptcha.textproducer.font.color}")
+	private String fcolor;
+
+	@Value("${kaptcha.image.width}")
+	private String width;
+
+	@Value("${kaptcha.textproducer.char.string}")
+	private String cString;
+
+	@Value("${kaptcha.image.height}")
+	private String height;
+
+	@Value("${kaptcha.textproducer.font.size}")
+	private String fsize;
+
+	@Value("${kaptcha.noise.color}")
+	private String nColor;
+
+	@Value("${kaptcha.textproducer.char.length}")
+	private String clength;
+
+	@Value("${kaptcha.textproducer.font.names}")
+	private String fnames;
+
+	/**
+	 * 由于web.xml不生效了，需要在这里配置Kaptcha验证码Servlet
+	 */
+	@Bean
+	public ServletRegistrationBean<KaptchaServlet> servletRegistrationBean() throws ServletException {
+		ServletRegistrationBean<KaptchaServlet> servlet = new ServletRegistrationBean<KaptchaServlet>(new KaptchaServlet(), "/Kaptcha");
+		servlet.addInitParameter("kaptcha.border", border);// 无边框
+		servlet.addInitParameter("kaptcha.textproducer.font.color", fcolor); // 字体颜色
+		servlet.addInitParameter("kaptcha.image.width", width);// 图片宽度
+		servlet.addInitParameter("kaptcha.textproducer.char.string", cString);// 使用哪些字符生成验证码
+		servlet.addInitParameter("kaptcha.image.height", height);// 图片高度
+		servlet.addInitParameter("kaptcha.textproducer.font.size", fsize);// 字体大小
+		servlet.addInitParameter("kaptcha.noise.color", nColor);// 干扰线的颜色
+		servlet.addInitParameter("kaptcha.textproducer.char.length", clength);// 字符个数
+		servlet.addInitParameter("kaptcha.textproducer.font.names", fnames);// 字体
+		return servlet;
+	}
+
+}
+```
+
+### docBase配置的迁移
+
+在之前，数据库中存储的图片是以相对路径来存储的，因此在前端取出图片的时候需要解析成完整的url地址。
+
+在SpringMVC中，我们通过配置tomcat的server.xml，在Host标签下添加Context标签来解析替换。
+
+```xml
+<Context docBase="/home/yikang/publicPro/upload" path="/upload"/>
+```
+
+SpringBoot用的是内置的tomcat，因此需要通过配置类来实现，同样是在WebMvcConfigurer中配置：
+
+```java
+/**
+ * 开启Mvc,自动注入spring容器。 WebMvcConfigurerAdapter：配置视图解析器
+ * 当一个类实现了这个接口（ApplicationContextAware）之后，这个类就可以方便获得ApplicationContext中的所有bean
+ * 
+ */
+@Configuration
+// 等价于<mvc:annotation-driven/>
+@EnableWebMvc
+public class MvcConfiguration implements WebMvcConfigurer, ApplicationContextAware {
+	// Spring容器
+	private ApplicationContext applicationContext;
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;
+	}
+
+	/**
+	 * 静态资源配置
+	 * 
+	 * @param registry
+	 */
+	@Override
+	public void addResourceHandlers(ResourceHandlerRegistry registry) {
+		// registry.addResourceHandler("/resources/**").addResourceLocations("classpath:/resources/");
+		registry.addResourceHandler("/upload/**").addResourceLocations("file:/Users/baidu/work/image/upload/");
+	}
+}
+```
+
+### 拦截器的转移
+
+拦截器的实现类与之前一样，拦截器的实现类负责处理，在WebMvcConfigurer中的addInterceptors方法中添加并指定拦截的路径。
+
+注意各个拦截器添加的顺序。
+
+```java
+/**
+ * 开启Mvc,自动注入spring容器。 WebMvcConfigurerAdapter：配置视图解析器
+ * 当一个类实现了这个接口（ApplicationContextAware）之后，这个类就可以方便获得ApplicationContext中的所有bean
+ * 
+ */
+@Configuration
+// 等价于<mvc:annotation-driven/>
+@EnableWebMvc
+public class MvcConfiguration implements WebMvcConfigurer, ApplicationContextAware {
+	// Spring容器
+	private ApplicationContext applicationContext;
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;
+	}
+
+	/**
+	 * 添加拦截器配置
+	 */
+	@Override
+	public void addInterceptors(InterceptorRegistry registry) {
+		/** 店家管理系统拦截部分 **/
+		String interceptPath = "/shopadmin/**";
+		// 注册拦截器
+		InterceptorRegistration loginIR = registry.addInterceptor(new ShopLoginInterceptor());
+		// 配置拦截的路径
+		loginIR.addPathPatterns(interceptPath);
+		/** shopauthmanagement page **/
+		loginIR.excludePathPatterns("/shopadmin/addshopauthmap");
+		/** scan **/
+		loginIR.excludePathPatterns("/shopadmin/adduserproductmap");
+		loginIR.excludePathPatterns("/shopadmin/exchangeaward");
+		// 还可以注册其它的拦截器
+		InterceptorRegistration permissionIR = registry.addInterceptor(new ShopPermissionInterceptor());
+		// 配置拦截的路径
+		permissionIR.addPathPatterns(interceptPath);
+		// 配置不拦截的路径
+		/** shoplist page **/
+		permissionIR.excludePathPatterns("/shopadmin/shoplist");
+		permissionIR.excludePathPatterns("/shopadmin/getshoplist");
+		/** shopregister page **/
+		permissionIR.excludePathPatterns("/shopadmin/getshopinitinfo");
+		permissionIR.excludePathPatterns("/shopadmin/registershop");
+		permissionIR.excludePathPatterns("/shopadmin/shopoperation");
+		/** shopmanage page **/
+		permissionIR.excludePathPatterns("/shopadmin/shopmanagement");
+		permissionIR.excludePathPatterns("/shopadmin/getshopmanagementinfo");
+		/** shopauthmanagement page **/
+		permissionIR.excludePathPatterns("/shopadmin/addshopauthmap");
+		/** scan **/
+		permissionIR.excludePathPatterns("/shopadmin/adduserproductmap");
+		permissionIR.excludePathPatterns("/shopadmin/exchangeaward");
+		/** 超级管理员系统拦截部分 **/
+		interceptPath = "/superadmin/**";
+		// 注册拦截器
+		InterceptorRegistration superadminloginIR = registry.addInterceptor(new SuperAdminLoginInterceptor());
+		// 配置拦截的路径
+		superadminloginIR.addPathPatterns(interceptPath);
+		superadminloginIR.excludePathPatterns("/superadmin/login");
+		superadminloginIR.excludePathPatterns("/superadmin/logincheck");
+		superadminloginIR.excludePathPatterns("/superadmin/main");
+		superadminloginIR.excludePathPatterns("/superadmin/top");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4area");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4headline");
+		superadminloginIR.excludePathPatterns("/superadmin/clearcache4shopcategory");
+	}
+
+}
+```
+
+### 其他优化
+
+比如在PathUtil中，可以把各种系统下的路径放在properties中，然后再PathUtil类上用@Configuration注解，用@Value的方式直接注入。
+
+### Test文件
+
+在SpringMVC中，我们定义了一个BaseTest的测试基类，在该类注解了@ContextConfiguration来扫描dao层的xml文件。
+
+```java
+@RunWith(SpringJUnit4ClassRunner.class)
+//告诉junit spring配置文件的位置
+@ContextConfiguration({"classpath:spring/spring-dao.xml", "classpath:spring/spring-service.xml",
+        "classpath:spring/spring-redis.xml"})
+public class BaseTest {
+
+}
+```
+
+而在SpringBoot就不需要了，只需要添加@SpringBootTest注解即可。
+
+```java
+@RunWith(SpringRunner.class)
+@SpringBootTest
+public class AreaServiceTest  {
+	@Autowired
+	private AreaService areaService;
+	@Autowired
+	private CacheService cacheService;
+
+	@Test
+	public void testGetAreaList() {
+		List<Area> areaList = areaService.getAreaList();
+		assertEquals("西苑", areaList.get(0).getAreaName());
+		cacheService.removeFromCache(areaService.AREALISTKEY);
+		areaList = areaService.getAreaList();
+	}
+}
+```
+
+
+
 ## 其他坑
 
 ### mybatis中#{}与${}
@@ -2999,4 +3649,20 @@ root     31697     1  0 11:33 ?        00:00:13 src/redis-server *:6379
 11695:C 24 Mar 17:00:26.129  Redis version=4.0.2, bits=64, commit=00000000, modified=0, pid=11695, just started
 11695:C 24 Mar 17:00:26.129  Configuration loaded
 ```
+
+### 打包与部署
+
+SpringBoot打包时，在pom文件中可以指定打成jar包还是war包，默认是jar包。
+
+但是用maven打包，如果是jar包的话是不会讲html等文件打包进去的，推荐war包。
+
+maven打包命令：
+
+```shell
+mvn clean package -Dmaven.test.skip=true
+```
+
+默认打包到target目录下。
+
+> 这一部分存疑，因为这个项目是由SpringMVC迁移到SpringBoot，因此存在着webapp目录。这种情况下打包jar是不会把html等文件打包的。如果是直接按着SpringBoot的模板来创建项目，不清楚打jar包是否能将静态文件给打包。
 
