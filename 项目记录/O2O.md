@@ -1750,7 +1750,7 @@ set global validate_password_length=6;
 SHOW VARIABLES LIKE 'validate_password%';
 use mysql;
 # 开启允许所有地址以root身份登录访问
-GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '159753!' WITH GRANT OPTION; 
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '159753Dyk' WITH GRANT OPTION; 
 ```
 
 ### 配置Mysql
