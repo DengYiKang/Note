@@ -428,3 +428,156 @@ public class BaseController {
     }
 }
 ```
+
+## 设置跨域
+
+```java
+@Configuration
+public class WebMvcConfig implements WebMvcConfigurer {
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        // 设置允许跨域的路由
+        registry.addMapping("/**")
+                // 设置允许跨域请求的域名
+                .allowedOriginPatterns("*")
+                // 是否允许证书（cookies）
+                .allowCredentials(true)
+                // 设置允许的方法
+                .allowedMethods("*")
+                // 跨域允许时间
+                .maxAge(3600);
+    }
+}
+```
+
+## 优化校验规则
+
+### pom.xml
+
+```xml
+<!-- https://mvnrepository.com/artifact/org.hibernate.validator/hibernate-validator -->
+<dependency>
+    <groupId>org.hibernate.validator</groupId>
+    <artifactId>hibernate-validator</artifactId>
+    <version>6.2.0.Final</version>
+</dependency>
+```
+
+### ValidationResult
+
+ValidationResult类用于保存校验结果。
+
+```java
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class ValidationResult {
+    //检验结果是否有错
+    private boolean hasErrors = false;
+
+    //存放错误信息的map
+    private Map<String, String> errorMsgMap = new HashMap<>();
+
+    public boolean isHasErrors() {
+        return hasErrors;
+    }
+
+    public void setHasErrors(boolean hasErrors) {
+        this.hasErrors = hasErrors;
+    }
+
+    public Map<String, String> getErrorMsgMap() {
+        return errorMsgMap;
+    }
+
+    public void setErrorMsgMap(Map<String, String> errorMsgMap) {
+        this.errorMsgMap = errorMsgMap;
+    }
+
+    //实现通用的格式化字符串信息获得错误结果的msg方法
+    public String getErrMsg() {
+        return StringUtils.join(errorMsgMap.values().toArray(), "");
+    }
+}
+```
+
+### ValidatorImpl
+
+InitializingBean接口为bean提供了初始化方法的方式，它只包括afterPropertiesSet方法，凡是继承该接口的类，在初始化bean的时候会执行该方法，具体说spring初始化bean之后执行该方法。
+
+这其实起一个构造器的作用，将Validator变量通过Validation的工厂来创建初始化。
+
+```java
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.stereotype.Component;
+
+import javax.validation.ConstraintValidator;
+import javax.validation.ConstraintViolation;
+import javax.validation.Validation;
+import javax.validation.Validator;
+import java.util.Set;
+
+@Component
+public class ValidatorImpl implements InitializingBean {
+
+    private Validator validator;
+
+    //实现检验方法并返回检验结果
+    public ValidationResult validate(Object bean) {
+        final ValidationResult result = new ValidationResult();
+        Set<ConstraintViolation<Object>> constraintValidatorSet = validator.validate(bean);
+        if (constraintValidatorSet.size() > 0) {
+            result.setHasErrors(true);
+            constraintValidatorSet.forEach(constraintValidation->{
+                String errMsg = constraintValidation.getMessage();
+                String propertyName = constraintValidation.getPropertyPath().toString();
+                result.getErrorMsgMap().put(propertyName, errMsg);
+            });
+        }
+        return result;
+    }
+
+    @Override
+    public void afterPropertiesSet() throws Exception {
+        this.validator = Validation.buildDefaultValidatorFactory().getValidator();
+    }
+}
+```
+
+### 使用
+
+```java
+@Autowired
+private ValidatorImpl validator;
+```
+
+```java
+ValidationResult result = validator.validate(userModel);
+if (result.isHasErrors()){
+    throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR, result.getErrMsg());
+}
+```
+
+## 坑
+
+### 中文字符乱码
+
+#### mysql设置
+
+```mysql
+show variables like 'char%';
+# 查看哪些字段不是utf8，除了文件的编码是binary，然后按照如下的格式设置
+set character_set_clinet=utf8;
+```
+
+#### application.yaml
+
+连接的url添加上&characterEncoding=utf8。
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://1.15.172.26:3306/miaosha?useSSL=false&characterEncoding=utf8
+```
