@@ -3652,17 +3652,25 @@ root     31697     1  0 11:33 ?        00:00:13 src/redis-server *:6379
 
 ### 打包与部署
 
-SpringBoot打包时，在pom文件中可以指定打成jar包还是war包，默认是jar包。
-
-但是用maven打包，如果是jar包的话是不会讲html等文件打包进去的，推荐war包。
-
 maven打包命令：
 
 ```shell
 mvn clean package -Dmaven.test.skip=true
 ```
 
-默认打包到target目录下。
+但是这有个问题，得到的jar包里面并没有包含依赖库，且执行报错，显示找不到主清单文件。
 
-> 这一部分存疑，因为这个项目是由SpringMVC迁移到SpringBoot，因此存在着webapp目录。这种情况下打包jar是不会把html等文件打包的。如果是直接按着SpringBoot的模板来创建项目，不清楚打jar包是否能将静态文件给打包。
+在pom文件里添加plugin：
 
+```xml
+<plugins>
+    <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+    </plugin>
+</plugins>
+```
+
+> 如果标红，可以先指定一个version，然后再把version删除。
+
+然后再用maven打包即可。
