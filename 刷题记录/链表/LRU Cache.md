@@ -10,7 +10,7 @@
 
 把各种原子操作独立出来会比较好写。
 
-```shell
+```java
 class LRUCache {
     
     Node head, tail;
