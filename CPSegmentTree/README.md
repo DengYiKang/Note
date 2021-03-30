@@ -37,7 +37,7 @@ Construction:
 	left, right:the left boundary of the segment
 */
 void build(int a[], int v, int left, int right){
-	if(left=right){
+	if(left==right){
 		t[v]=a[right];
 	}else{
 		int mid=(left+right)/2;
