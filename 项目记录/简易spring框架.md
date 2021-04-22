@@ -374,6 +374,416 @@ public class EnumStarvingSingleton {
 
 如果使用反射获取到构造函数，那么将报错：`cannot reflectively create enum objects`。
 
+## IOC容器
+
+### 容器的载体以及容器的加载
+
+需要保证容器是单例，可以使用上面讲到的枚举类来实现，避免被反射和序列化破坏 。
+
+在初始化时，容器将所有被特定注解（如`@Component, @Controller`等）标注的类进行初始化构建，用一个map来存储，其中，键为`Class<?>`，值为`Object`，通过class对象可以获取对应类的实例。
+
+定义一个`loadBean`的方法，传入包名，扫描包下的所有类，如果该类被特定注解标记，那么通过反射获取它的无参构造函数，`newInstance`出一个实例放入map中。
+
+```java
+@Slf4j
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public class BeanContainer {
+
+    /**
+     * 存放所有被配置标记的目标对象的map
+     */
+    private final Map<Class<?>, Object> beanMap = new ConcurrentHashMap<>();
+
+    /**
+     * 加载bean的注解列表
+     */
+    private static final List<Class<? extends Annotation>> BEAN_ANNOTATION =
+            Arrays.asList(Component.class, Controller.class, Service.class, Repository.class);
+
+    /**
+     * 获取bean容器实例
+     *
+     * @return
+     */
+    public static BeanContainer getInstance() {
+        return ContainerHolder.HOLDER.instance;
+    }
+
+
+    private enum ContainerHolder {
+        HOLDER;
+        private BeanContainer instance;
+
+        ContainerHolder() {
+            instance = new BeanContainer();
+        }
+    }
+
+    /**
+     * 容器是否被加载过
+     */
+    private boolean loaded = false;
+
+    /**
+     * 容器是否已经被加载过
+     *
+     * @return 容器是否已经被加载过
+     */
+    public boolean isLoaded() {
+        return loaded;
+    }
+
+    /**
+     * Bean实例数量
+     *
+     * @return 数量
+     */
+    public int size() {
+        return beanMap.size();
+    }
+
+    /**
+     * 扫描加载所有的bean
+     *
+     * @param packageName 包名
+     */
+    public synchronized void loadBeans(String packageName) {
+        //判断bean容器是否被加载过
+        if (isLoaded()) {
+            log.warn("BeanContainer has been loaded");
+            return;
+        }
+        Set<Class<?>> classSet = ClassUtil.extractPackageClass(packageName);
+        if (ValidationUtil.isEmpty(classSet)) {
+            log.warn("extract nothing from packageName " + packageName);
+            return;
+        }
+        for (Class<?> clazz : classSet) {
+            for (Class<? extends Annotation> annotation : BEAN_ANNOTATION) {
+                //如果类上面标记了定义的注解
+                if (clazz.isAnnotationPresent(annotation)) {
+                    //将目标类本身作为键，目标类的实例作为值，放入到beanMap中
+                    beanMap.put(clazz, ClassUtil.newInstance(clazz, true));
+                }
+            }
+        }
+        loaded = true;
+    }
+}
+```
+
+### 提供容器对外操作的方法
+
+```java
+/**
+ * 添加一个class对象及其Bean实例
+ *
+ * @param clazz class对象
+ * @param bean  bean实例
+ * @return 原有的bean实例，没有则返回null
+ */
+public Object addBean(Class<?> clazz, Object bean) {
+    return beanMap.put(clazz, bean);
+}
+
+/**
+ * 移除一个IOC容器管理的对象
+ *
+ * @param clazz class对象
+ * @return 删除的bean实例，没有则返回null
+ */
+public Object removeBean(Class<?> clazz) {
+    return beanMap.remove(clazz);
+}
+
+/**
+ * 根据class对象获取bean实例
+ *
+ * @param clazz class对象
+ * @return bean实例
+ */
+public Object getBean(Class<?> clazz) {
+    return beanMap.get(clazz);
+}
+
+/**
+ * 获取容器管理的所有class对象集合
+ *
+ * @return class集合
+ */
+public Set<Class<?>> getClasses() {
+    return beanMap.keySet();
+}
+
+/**
+ * 获取所有bean的集合
+ *
+ * @return bean集合
+ */
+public Set<Object> getBeans() {
+    return new HashSet<>(beanMap.values());
+}
+
+/**
+ * 根据注解筛选出bean的class集合
+ *
+ * @param annotation 注解
+ * @return class集合
+ */
+public Set<Class<?>> getClassesByAnnotation(Class<? extends Annotation> annotation) {
+    //1、获取beanMap的所有class对象
+    Set<Class<?>> keySet = getClasses();
+    if (ValidationUtil.isEmpty(keySet)) {
+        log.warn("nothing in beanMap");
+        return null;
+    }
+    Set<Class<?>> classSet = new HashSet<>();
+    //2、通过注解筛选出被注解标记的class对象，并添加到classSet中
+    for (Class<?> clazz : keySet) {
+        if (clazz.isAnnotationPresent(annotation)) {
+            classSet.add(clazz);
+        }
+    }
+    return classSet.size() > 0 ? classSet : null;
+}
+
+/**
+ * 通过接口或者父类获取实现类或者子类的class集合，不包括其本身
+ *
+ * @param interfaceOrClass 接口class或者父类class
+ * @return class集合
+ */
+public Set<Class<?>> getClassesBySuper(Class<?> interfaceOrClass) {
+    //1、获取beanMap的所有class对象
+    Set<Class<?>> keySet = getClasses();
+    if (ValidationUtil.isEmpty(keySet)) {
+        log.warn("nothing in beanMap");
+        return null;
+    }
+    Set<Class<?>> classSet = new HashSet<>();
+    //2、判断keySet里的元素是否是传入的接口或者类的子类，如果是，就将其添加到classSet中
+    for (Class<?> clazz : keySet) {
+        //注意，isAssignableFrom还包括自己本身，需要排除在外
+        if (interfaceOrClass.isAssignableFrom(clazz) && !clazz.equals(interfaceOrClass)) {
+            classSet.add(clazz);
+        }
+    }
+    return classSet.size() > 0 ? classSet : null;
+}
+```
+
+以下是测试类：
+
+```java
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class BeanContainerTest {
+    private static BeanContainer beanContainer;
+
+    @BeforeAll
+    static void init() {
+        beanContainer = BeanContainer.getInstance();
+    }
+
+    @DisplayName("加载目标类及其实例到BeanContainer：loadBeansTest")
+    @Order(1)
+    @Test
+    public void loadBeansTest() {
+        Assertions.assertEquals(false, beanContainer.isLoaded());
+        beanContainer.loadBeans("com.yikang");
+        Assertions.assertEquals(7, beanContainer.size());
+        Assertions.assertEquals(true, beanContainer.isLoaded());
+    }
+
+    @DisplayName("根据获取其实例：getBeanTest")
+    @Order(2)
+    @Test
+    public void getBean() {
+        MainPageController mainPageController = (MainPageController) beanContainer.getBean(MainPageController.class);
+        Assertions.assertEquals(true, mainPageController instanceof MainPageController);
+        DispatcherServlet dispatcherServlet = (DispatcherServlet) beanContainer.getBean(DispatcherServlet.class);
+        Assertions.assertEquals(null, dispatcherServlet);
+    }
+
+    @DisplayName("根据注解获取对应的实例：getClassesByAnnotationTest")
+    @Order(3)
+    @Test
+    public void getClassesByAnnotationTest() {
+        Assertions.assertEquals(true, beanContainer.isLoaded());
+        Assertions.assertEquals(3, beanContainer.getClassesByAnnotation(Controller.class).size());
+    }
+
+    @DisplayName("根据接口获取实现类：getClassesBySuperTest")
+    @Order(4)
+    @Test
+    public void getClassesBySuperTest() {
+        Assertions.assertEquals(true, beanContainer.isLoaded());
+        Assertions.assertEquals(true, beanContainer.getClassesBySuper(HeadLineService.class).contains(HeadLineServiceImpl.class));
+    }
+}
+```
+
+### 实现容器的依赖注入
+
+上述实现是不够的，可以注意到，在一些类的实现中可能会注入其他类，例如`@Autowired`注解，我们在进行实例化某个类时还需要将它需要的类依赖注入到其中。
+
+首先需要定义相关注解标签，实现创建被注解标记的成员变量实例，并将其注入到成员变量里。
+
+首先定义`@Autowired`注解：
+
+```java
+/* 
+* Autowired 目前仅支持成员变量的注入
+*/
+@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Autowired {
+    String value() default "";
+}
+```
+
+其中`value`变量用于指定注入的实具体现类（如果有多个实现类的话）。
+
+然后编写注入的代码：
+
+大致的流程是这样的：
+
+1、遍历Bean容器中所有的class对象
+
+2、遍历class对象的所有成员变量
+
+3、找出被Autowired标记的成员变量
+
+4、获取这些成员变量的类型即class
+
+5、获取这些成员变量的类型在容器里对应的实例
+
+6、通过反射将对应的成员变量实例注入到成员变量所在类的实例里
+
+之前我们已经编写了BeanContainer类中的getClassesBySuper的方法来获取某个父类或容器的所有实现，可以调用该方法来获取所有的实现，然后根据`@Autowired`的成员变量`value`来具体地选择具体的实现类。
+
+```java
+@Slf4j
+public class DependencyInjector {
+    /**
+     * bean容器
+     */
+    private BeanContainer beanContainer;
+
+    public DependencyInjector() {
+        beanContainer = BeanContainer.getInstance();
+    }
+
+    /**
+     * 执行Ioc
+     */
+    public void doIoc() {
+        //1、遍历Bean容器中所有的class对象
+        Set<Class<?>> classSet = beanContainer.getClasses();
+        if (ValidationUtil.isEmpty(classSet)) {
+            log.warn("empty classSet in BeanContainer");
+            return;
+        }
+        for (Class<?> clazz : classSet) {
+            //2、遍历class对象的所有成员变量
+            Field[] fields = clazz.getDeclaredFields();
+            if (ValidationUtil.isEmpty(fields)) {
+                continue;
+            }
+            for (Field field : fields) {
+                //3、找出被Autowired标记的成员变量
+                if (field.isAnnotationPresent(Autowired.class)) {
+                    Autowired autowired = field.getAnnotation(Autowired.class);
+                    String autowiredValue = autowired.value();
+                    //4、获取这些成员变量的类型
+                    Class<?> fieldClass = field.getType();
+                    //5、获取这些成员变量的类型在容器里对应的实例
+                    Object fieldValue = getFieldInstance(fieldClass, autowiredValue);
+                    if (fieldValue == null) {
+                        throw new RuntimeException("unable to inject relevant type, target fieldClass is:" + fieldClass.getName() + " " + autowiredValue);
+                    } else {
+                        //6、通过反射将对应的成员变量实例注入到成员变量所在类的实例里
+                        Object targetBean = beanContainer.getBean(clazz);
+                        ClassUtil.setField(field, targetBean, fieldValue, true);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据class在beanContainer里获取其实例或者实现类
+     *
+     * @param fieldClass     class
+     * @param autowiredValue 如果实现类有多个，那么指定注入哪种实现类
+     * @return class实例
+     */
+    private Object getFieldInstance(Class<?> fieldClass, String autowiredValue) {
+        Object fieldValue = beanContainer.getBean(fieldClass);
+        if (fieldValue != null) {
+            return fieldValue;
+        } else {
+            //fieldClass可能是接口的接口
+            Class<?> implementedClass = getImplementClass(fieldClass, autowiredValue);
+            if (implementedClass != null) {
+                return beanContainer.getBean(implementedClass);
+            } else {
+                return null;
+            }
+        }
+    }
+
+    /**
+     * 获取接口的实现类
+     *
+     * @param fieldClass     class
+     * @param autowiredValue 如果实现类有多个，那么指定注入哪种实现类
+     * @return 实现类
+     */
+    private Class<?> getImplementClass(Class<?> fieldClass, String autowiredValue) {
+        Set<Class<?>> classSet = beanContainer.getClassesBySuper(fieldClass);
+        if (!ValidationUtil.isEmpty(classSet)) {
+            if (ValidationUtil.isEmpty(autowiredValue)) {
+                if (classSet.size() == 1) {
+                    return classSet.iterator().next();
+                } else {
+                    //如果有多个实现类，但是用户没有指定哪种，则抛出异常
+                    throw new RuntimeException("multiple implemented classes for" + fieldClass.getName() + "please set @Autowired's value to pick one");
+                }
+            } else {
+                for (Class<?> clazz : classSet) {
+                    if (autowiredValue.equals(clazz.getSimpleName())) {
+                        return clazz;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+}
+```
+
+以下为测试类：
+
+```java
+public class DependencyInjectorTest {
+
+    @DisplayName("依赖注入doIoc")
+    @Test
+    public void doIocTest() {
+        BeanContainer beanContainer = BeanContainer.getInstance();
+        beanContainer.loadBeans("com.yikang");
+        Assertions.assertEquals(true, beanContainer.isLoaded());
+        MainPageController mainPageController = (MainPageController) beanContainer.getBean(MainPageController.class);
+        Assertions.assertEquals(true, mainPageController instanceof MainPageController);
+        Assertions.assertEquals(null, mainPageController.getHeadLineShopCategoryCombineService());
+        new DependencyInjector().doIoc();
+        Assertions.assertNotEquals(null, mainPageController.getHeadLineShopCategoryCombineService());
+        Assertions.assertEquals(true, mainPageController.getHeadLineShopCategoryCombineService() instanceof HeadLineShopCategoryCombineServiceImpl);
+    }
+}
+```
+
 ## 小tip
 
 可以设置VM参数来更好地研究源码：
