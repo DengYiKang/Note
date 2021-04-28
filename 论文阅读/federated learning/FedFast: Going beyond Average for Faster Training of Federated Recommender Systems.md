@@ -39,7 +39,7 @@
 ## 创新点
 
 + 将FL与RS系统相结合
-+ 各个delegate的contribution正比于w的变化，如果某个delegate变化越剧烈，那么全局收到的影响也越大，突出个性化？
++ 各个delegate的contribution正比于w的变化，如果某个delegate变化越剧烈，那么全局受到的影响也越大，突出个性化？
 + 利用cluster内的相似的user共享updating，加速收敛
 
 ## 缺陷

@@ -2,7 +2,7 @@
 
 这是meta learning中的经典算法MAML。
 
-meta learning即元学习，也可以称为"learning to learn"，即学习“如何更快更好地学习一个模型”。
+meta learning即元学习，也可以称为"learning to learn"，即学习“如何更快更好地学习一个模型。
 
 MAML用于算出初始参数，将该初始参数运用到模型的训练中会取得更好的效果。
 

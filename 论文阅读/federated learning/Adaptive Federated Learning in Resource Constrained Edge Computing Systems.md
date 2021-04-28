@@ -24,7 +24,7 @@
 
 如果再引入资源的限制，如内存、时间的限制，那么各个节点所能进行的local update以及global update的次数是受到了限制的，当资源耗尽时必须终止计算，将当前结果作为最终结果并退出。
 
-这里假定每经历k次local update进行一次global update，那么问题在于如何对k进行取值从而在优先的资源下使loss function的值降到最低？
+这里假定每经历k次local update进行一次global update，那么问题在于如何对k进行取值从而在有限的资源下使loss function的值降到最低？
 
 这篇论文首先理论上分析了基于同步梯度下降的联邦学习的收敛界。
 
@@ -98,6 +98,8 @@ edge node：
 
 ![](../../pic/152.png)
 
-**缺陷：**
+## 总结
+
+理论分析了在有限的资源下如何安排local update和global update的次数来使得loss最小化。
 
 因为一开始假设的loss function是凸函数，但是对于深度神经网络不适用，并且实验大部分都是使用的传统的机器学习算法进行比较，如逻辑回归、SVM等，这些算法的激活函数都是凸函数。
