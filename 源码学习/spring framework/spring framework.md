@@ -170,6 +170,57 @@ refresh()大致功能：
 
 首先将配置文件读取到内存中，这些配置将会被当做Resource对象，然后被解析成BeanDefinition实例，最后注册到spring容器中。
 
+## 后置处理器PostProcessor
+
+本身也是一种需要注册到容器里的Bean
+
++ 其里面的方法会在特定的时机被容器调用
++ 实现不改变容器或者Bean核心逻辑的情况下对Bean进行扩展
++ 对Bean进行包装，影响其行为、修改Bean的内容等
+
+### 种类
+
+大类分为容器级别的后置处理器以及Bean级别的后置处理器
+
++ BeanDefinitionRegistryPostProcessor
++ BeanFactoryPostProcessor
++ BeanPostProcessor
+
+## Spring的时间驱动模型
+
+事件驱动模型的三大组成部分
+
++ 事件：ApplicationEvent抽象类
++ 事件监听器：ApplicationLIstener
++ 事件发布器：Publish以及Multicaster
+
+## Spring是否支持所有循环依赖的情况
+
+循环依赖的情况如下：
+
++ 构造器循环依赖（singleton、prototype）
++ Setter注入循环依赖（singleton、prototype）
+
+### Spring不支持prototype的循环依赖
+
+因为没有设置三级缓存进行支持
+
++ 只能通过将Bean的名字放入缓存里阻断无限循环
+
+### Spring不支持单例构造器的循环依赖
+
+### Spring支持单例的setter注入循环依赖
+
+## keyword
+
++ Aware
++ AbstractApplicationContext#refresh：（refresh只加载非延时singleton的bean，对于prototype等类型的bean不会加载，只能通过显式的方式加载，如getBean方法）
++ populateBean
++ SpringAOP的实现原理之CGLIB动态代理
+  + 不要求被代理类实现接口
+  + 内部主要封装了ASM Java字节码操控框架
+  + 动态生成子类以覆盖非final的方法，绑定钩子回调自定义拦截器
+
 ## 术语补充
 
 + 组件扫描：自动发现应用容器中需要创建的Bean（即扫描所有的class查看是否被`@Controller`等修饰，然后初始化）
