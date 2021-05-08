@@ -1409,6 +1409,897 @@ public class AspectListExecutor implements MethodInterceptor {
 
 这样就可以使用与Spring框架相同的AspectJ表达式了。
 
+## MVC的实现
+
+![](../pic/202.jpg)
+
+PreRequestProcessor预处理请求，包括编码以及路径处理。
+
+StaticResourceRequestProcessor处理静态资源请求，包括但不限于图片、css以及js文件等，转发到tomcat的DefaultServlet处理。
+
+JspRequestProcessor处理jsp资源请求。
+
+ControllerRequestProcessor：
+
++ 针对特定请求，选择匹配的Controller方法进行处理
++ 解析请求里的参数及其对应的值，并赋值给Controller方法的参数
++ 选择合适的Render，为后续请求处理结果的渲染做准备
+
+### 注解、组合类、工具类
+
+#### type
+
+定义枚举类型`RequestMethod`，用来表示请求方法（GET，POST）。
+
+```java
+/**
+ * 目前支持的请求方法
+ */
+public enum RequestMethod {
+    GET,
+    POST
+}
+```
+
+定义组合类型`RequestPathInfo`，将请求方法和路径组合在一起：
+
+```java
+/**
+ * 存储http请求路径和方法
+ */
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class RequestPathInfo {
+    //http请求方法
+    private String httpMethod;
+    //http请求路径
+    private String httpPath;
+}
+```
+
+定义`ControllerMethod`，将controller的class对象，controller method的实例，方法参数名称以及对应的参数类型组合在一起：
+
+```java
+/**
+ * 待执行的Controller及其方法实例和参数的映射
+ */
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ControllerMethod {
+    //controller对应的class对象
+    private Class<?> controllerClass;
+    //执行的controller方法实例
+    private Method invokeMethod;
+    //方法参数名称及其对应的参数类型
+    private Map<String, Class<?>> methodParameters;
+}
+```
+
+#### Annotation
+
+定义三个注解：`@RequestMapping`，`@RequestParam`，`@ResponseBody`：
+
+```java
+/**
+ * 标识Controller的方法与请求路径和请求方法的映射关系
+ */
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequestMapping {
+    /**
+     * 请求路径
+     */
+    String value() default "";
+
+    /**
+     * 请求方法
+     */
+    RequestMethod method() default RequestMethod.GET;
+}
+```
+
+```java
+/**
+ * 请求的方法参数
+ */
+@Target(ElementType.PARAMETER)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface RequestParam {
+    /**
+     * 方法参数名称
+     */
+    String value() default "";
+
+    /**
+     * 该参数是否是必须的
+     */
+    boolean required() default true;
+}
+```
+
+```java
+/**
+ * 用于标记自动对返回值进行json处理
+ */
+@Target(ElementType.METHOD)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface ResponseBody {
+
+}
+```
+
+#### Util
+
+primitiveNull用于返回基本数据类型的空值。
+
+convert用于将String类型转换成对应的参数类型。
+
+isPrimitive用于判定是否基本数据类型(包括包装类以及String)。
+
+```java
+public class ConverterUtil {
+
+    /**
+     * 返回基本数据类型的空值
+     * 需要特殊处理的基本类型即int, double, short, long, byte, float, boolean
+     *
+     * @param type 参数类型
+     * @return 对应的空值
+     */
+    public static Object primitiveNull(Class<?> type) {
+        if (type == int.class || type == double.class ||
+                type == short.class || type == long.class || type == byte.class || type == float.class) {
+            return 0;
+        } else if (type == boolean.class) {
+            return false;
+        } else return null;
+    }
+
+    /**
+     * String类型转换成对应的参数类型
+     *
+     * @param type         参数类型
+     * @param requestValue 值
+     * @return 转换后的Object
+     */
+    public static Object convert(Class<?> type, String requestValue) {
+        if (isPrimitive(type)) {
+            if (ValidationUtil.isEmpty(requestValue)) {
+                return primitiveNull(type);
+            }
+            if (type.equals(int.class) || type.equals(Integer.class)) {
+                return Integer.parseInt(requestValue);
+            } else if (type.equals(String.class)) {
+                return requestValue;
+            } else if (type.equals(Double.class) || type.equals(double.class)) {
+                return Double.parseDouble(requestValue);
+            } else if (type.equals(Float.class) || type.equals(float.class)) {
+                return Float.parseFloat(requestValue);
+            } else if (type.equals(Long.class) || type.equals(long.class)) {
+                return Long.parseLong(requestValue);
+            } else if (type.equals(Boolean.class) || type.equals(boolean.class)) {
+                return Boolean.parseBoolean(requestValue);
+            } else if (type.equals(Short.class) || type.equals(short.class)) {
+                return Short.parseShort(requestValue);
+            } else if (type.equals(Byte.class) || type.equals(byte.class)) {
+                return Byte.parseByte(requestValue);
+            }
+            return requestValue;
+        } else {
+            throw new RuntimeException("count not support non primitive type conversion yet");
+        }
+    }
+
+    /**
+     * 判定是否基本数据类型(包括包装类以及String)
+     *
+     * @param type 参数类型
+     * @return 是否为基本数据类型
+     */
+    private static boolean isPrimitive(Class<?> type) {
+        return type == boolean.class
+                || type == Boolean.class
+                || type == double.class
+                || type == Double.class
+                || type == float.class
+                || type == Float.class
+                || type == short.class
+                || type == Short.class
+                || type == int.class
+                || type == Integer.class
+                || type == long.class
+                || type == Long.class
+                || type == String.class
+                || type == byte.class
+                || type == Byte.class
+                || type == char.class
+                || type == Character.class;
+    }
+}
+```
+
+### DispatcherServlet
+
+DispatcherServlet用于拦截请求，将拦截到的请求交给责任链RequestProcessorChain处理。
+
+首先进行loadBean、doAop、doIoc，然后安排好Processor的顺序，生成对应的List，根据List、request、response生成责任链RequestProcessorChain。
+
+在DispatcherServlet中已经定义好了Processor的处理顺序：
+
+PreRequestProcessor-->StaticResourceRequestProcessor-->JspRequestProcessor-->ControllerRequestProcessor。
+
+```java
+/**
+ * 这个类起拦截功能，根据不同的url转发到不同的controller处理
+ */
+@WebServlet("/*")
+//使用/*来拦截所有请求，包括拦截转发请求(forward hello.jsp)以及jsp请求等。
+//而/不会拦截转发请求和jsp请求等
+public class DispatcherServlet extends HttpServlet {
+
+    List<RequestProcessor> PROCESSOR = new ArrayList<>();
+
+    @Override
+    public void init() throws ServletException {
+        //1、初始化容器
+        BeanContainer beanContainer = BeanContainer.getInstance();
+        beanContainer.loadBeans("com.yikang");
+        new AspectWeaver().doAop();
+        new DependencyInjector().doIoc();
+        //2、初始化请求处理器责任链
+        //中间两个processor的顺序可以对调，
+        //但必须保证PreRequestProcessor是第一个，ControllerRequestProcessor是最后一个
+        PROCESSOR.add(new PreRequestProcessor());
+        PROCESSOR.add(new StaticResourceRequestProcessor(getServletContext()));
+        PROCESSOR.add(new JspRequestProcessor(getServletContext()));
+        PROCESSOR.add(new ControllerRequestProcessor());
+    }
+
+    @Override
+    protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        //1、创建责任链对象实例
+        RequestProcessorChain requestProcessorChain = new RequestProcessorChain(PROCESSOR.iterator(), req, resp);
+        //2、通过责任链模式来依次调用请求处理器对请求进行处理
+        requestProcessorChain.doRequestProcessorChain();
+        //3、对处理结果进行渲染
+        requestProcessorChain.doRender();
+    }
+}
+```
+
+### RequestProcessorChain
+
+RequestProcessorChain持有RequestProcessor矩阵的引用，使用责任链的模式，依次调用PreRequestProcessor、StaticResourceRequestProcessor、JspRequestProcessor、ControllerRequestProcessor。根据结果设置Render（渲染器，例如需要返回json格式时，需要使用JsonResultRender渲染等）。
+
+保存了processor有序的List的迭代器，按顺序依次调用processor的process方法，直到迭代完或者processor返回false；
+
+保存了ResultRender变量，这个变量一般在processor的process方法中初始化，如果到最后还为null，那么使用默认的DefaultResultRender。
+
+```java
+/**
+ * 1、以责任链的模式执行注册的请求处理器
+ * 2、委派给特定的Render实例对处理后的结果进行渲染
+ */
+@Data
+@Slf4j
+public class RequestProcessorChain {
+
+    //请求处理器的迭代器
+    private Iterator<RequestProcessor> requestProcessorIterator;
+    //请求request
+    private HttpServletRequest request;
+    //请求response
+    private HttpServletResponse response;
+    //http请求方法
+    private String requestMethod;
+    //http请求路径
+    private String requestPath;
+    //http响应状态码
+    private int responseCode;
+    //请求结果渲染器
+    private ResultRender resultRender;
+
+    public RequestProcessorChain(Iterator<RequestProcessor> iterator, HttpServletRequest req, HttpServletResponse resp) {
+        this.requestProcessorIterator = iterator;
+        this.request = req;
+        this.response = resp;
+        this.requestMethod = req.getMethod();
+        this.requestPath = req.getPathInfo();
+        this.responseCode = HttpServletResponse.SC_OK;
+    }
+
+    /**
+     * 以责任链的模式执行请求链
+     */
+    public void doRequestProcessorChain() {
+        //1、通过迭代器遍历注册的请求处理器实现类列表
+        try {
+            while (requestProcessorIterator.hasNext()) {
+                //2、直到某个请求处理器执行后返回false为止
+                if (!requestProcessorIterator.next().process(this)) {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            //3、期间如果出现异常，则交由内部异常渲染器处理
+            this.resultRender = new InternalErrorResultRender();
+            log.error("doRequestProcessorChain error:", e);
+        }
+    }
+
+    /**
+     * 执行处理器
+     */
+    public void doRender() {
+        //1、如果请求处理器实现类均未选择合适的渲染器，则使用默认的
+        if (this.resultRender == null) {
+            this.resultRender = new DefaultResultRender();
+        }
+        //2、调用渲染器的render方法对结果进行渲染
+        try {
+            resultRender.render(this);
+        } catch (Exception e) {
+            log.error("doRender error:", e);
+            throw new RuntimeException(e);
+        }
+
+    }
+}
+```
+
+### RequestProcessor矩阵的实现
+
+所有的Processor都实现了RequestProcessor接口：
+
+```java
+/**
+ * 请求执行器
+ */
+public interface RequestProcessor {
+    /**
+     * 以责任链的模式执行processor
+     * @param requestProcessorChain
+     * @return
+     * @throws Exception
+     */
+    boolean process(RequestProcessorChain requestProcessorChain) throws Exception;
+}
+```
+
+#### PreRequestProcessor
+
+这是第一个被调用的Processor，用于请求预处理，包括编码以及路径处理。
+
+1、设置请求编码，将其统一设置成UTF-8
+
+2、将请求路径末尾的/剔除，为后续匹配Controller请求路径做准备
+
+```java
+/**
+ * 请求预处理，包括编码以及路径处理
+ */
+@Slf4j
+public class PreRequestProcessor implements RequestProcessor {
+    @Override
+    public boolean process(RequestProcessorChain requestProcessorChain) throws Exception {
+        //1、设置请求编码，将其统一设置成UTF-8
+        requestProcessorChain.getRequest().setCharacterEncoding("UTF-8");
+        //2、将请求路径末尾的/剔除，为后续匹配Controller请求路径做准备
+        //（Controller的处理路径为/aaa/bbb，如果传入的路径为/aaa/bbb/，就需要处理成/aaa/bbb）
+        String requestPath = requestProcessorChain.getRequestPath();
+        if (requestPath.length() > 1 && requestPath.endsWith("/")) {
+            requestProcessorChain.setRequestPath(requestPath.substring(0, requestPath.length() - 1));
+        }
+        log.info("preprocess request {} {}", requestProcessorChain.getRequestMethod(), requestProcessorChain.getRequestPath());
+        return true;
+    }
+}
+```
+
+#### StaticResourceRequestProcessor
+
+用于静态资源请求处理，包括但不限于图片、css以及js文件等，转发到tomcat的DefaultServlet处理。
+
+1、通过请求路径判断是否是请求的静态资源，假设我们将所有的静态资源放在webapp/static下
+
+2、如果是静态资源，则将请求转发给default servlet处理，已经交由tomcat的default servlet处理了，那么无需后续的责任链处，返回false
+
+```java
+/**
+ * 静态资源请求处理，包括但不限于图片、css以及js文件等，转发到tomcat的DefaultServlet处理
+ */
+@Slf4j
+public class StaticResourceRequestProcessor implements RequestProcessor {
+
+    //tomcat默认请求派发器RequestDispatcher的名称
+    public static final String DEFAULT_TOMCAT_SERVLET = "default";
+    public static final String STATIC_RESOURCE_PREFIX = "/static/";
+    //tomcat的default servlet实例
+    private RequestDispatcher defaultDispatcher;
+
+    public StaticResourceRequestProcessor(ServletContext servletContext) {
+        this.defaultDispatcher = servletContext.getNamedDispatcher(DEFAULT_TOMCAT_SERVLET);
+        if (defaultDispatcher == null) {
+            throw new RuntimeException("There is no default tomcat servlet");
+        }
+        log.info("The default servlet for static resource is {}", DEFAULT_TOMCAT_SERVLET);
+    }
+
+    @Override
+    public boolean process(RequestProcessorChain requestProcessorChain) throws Exception {
+        //1、通过请求路径判断是否是请求的静态资源，假设我们将所有的静态资源放在webapp/static下
+        if (isStaticResource(requestProcessorChain.getRequestPath())) {
+            //2、如果是静态资源，则将请求转发给default servlet处理
+            defaultDispatcher.forward(requestProcessorChain.getRequest(), requestProcessorChain.getResponse());
+            //已经交由tomcat的default servlet处理了，无需后续的责任链处理
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 通过请求路径前缀（目录）判断是否为对静态资源的请求 /static/
+     * 注意，为什么不是/webapp/开头的path？因为/webapp/是classpath，不会出现在请求的路径里面
+     *
+     * @param requestPath 请求路径
+     * @return 如果是对静态资源的请求则返回true
+     */
+    private boolean isStaticResource(String requestPath) {
+        return requestPath.startsWith(STATIC_RESOURCE_PREFIX);
+    }
+}
+```
+
+#### JspRequestProcessor
+
+同StaticResourceRequestProcessor。用于jsp资源请求的处理。
+
+```java
+/**
+ * jsp资源请求处理
+ */
+@Slf4j
+public class JspRequestProcessor implements RequestProcessor {
+
+    //jsp请求的RequestDispatcher的名称
+    private static final String JSP_SERVLET = "jsp";
+    //jsp请求资源路径前缀
+    private static final String JSP_RESOURCE_PREFIX = "/templates/";
+    //jsp的RequestDispatcher，处理jsp资源
+    private RequestDispatcher jspServlet;
+
+    public JspRequestProcessor(ServletContext servletContext) {
+        jspServlet = servletContext.getNamedDispatcher(JSP_SERVLET);
+        if (jspServlet == null) {
+            throw new RuntimeException("there is no jsp servlet");
+        }
+        log.info("The jsp servlet is {}", JSP_SERVLET);
+    }
+
+    @Override
+    public boolean process(RequestProcessorChain requestProcessorChain) throws Exception {
+        if (isJspResource(requestProcessorChain.getRequestPath())) {
+            jspServlet.forward(requestProcessorChain.getRequest(), requestProcessorChain.getResponse());
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 请求的资源是否是jsp
+     *
+     * @param requestPath 请求路径
+     * @return 请求的是jsp资源，返回true
+     */
+    private boolean isJspResource(String requestPath) {
+        return requestPath.startsWith(JSP_RESOURCE_PREFIX);
+    }
+}
+```
+
+#### ControllerRequestProcessor
+
+这是最重要的Processor。用于将请求转发到对应controller的对应方法中处理。
+
+在上面定义了两个组合类：
+
++ RequestPathInfo：存储了一个请求的path和method
++ ControllerMethod：存储了controller class、对应controller下的某个method实例、这个method实例的参数名称以及参数类型。这些映射到某个controller下的某个method。
+
+因此RequestPathInfo与ControllerMethod是一一对应的。
+
+维护一个`Map<RequestPathInfo, ControllerMethod>`，对于某个请求，都可以找到转发的controller method。
+
+如何初始化这个映射map？
+
+1、通过IOC容器获取所有被`@RequestMapping`标记的class
+
+2、遍历这些class的所有method，将类上的`@RequestMapping`的属性值以及method上的`@RequestMapping`属性值组合成path，然后也能拿到RequestMethod，那么就能组成RequestPathInfo。目前规定所有的参数必须用`@RequestParam`注解，因此也能拿到参数名，用来组成ControllerMethod。（这个参数名非常重要，一是用来从HttpServletRequest中取出对应的value，二是用来从ControllerMethod中的map中取出该名称对应的参数类型，用于将请求参数从String转成需要的类型）
+
+如何转发请求（invoke对应的method）？
+
+1、根据请求的path以及method可以确定对应的ControllerMethod
+
+2、ControllerMethod的map中存有参数名称与类型的映射，拿到参数名称可以从request中取出对应的值
+
+3、从request中取出的值是String类型的，因此需要转成需要的类型，这个类型信息可以从ControllerMethod中拿到
+
+4、调用invoke即可
+
+> 注意，反射的invoke要求参数列表要一一对应，因此ControllerMethod中的map应该是有序的，如LinkedHashMap、TreeMap等
+
+对于ResultRender的设置，当发现method有被`@ResponseBody`标记时，使用`JsonResultRender`，否则使用`ViewResultRender`。
+
+> DefaultResultRender只有在责任链中途返回false时才会使用。
+>
+> 而只有对静态资源/static/的请求以及对jsp文件的请求/templates/才会返回false。
+
+```java
+/**
+ * Controller请求处理器
+ */
+@Slf4j
+public class ControllerRequestProcessor implements RequestProcessor {
+
+    //IOC容器
+    private BeanContainer beanContainer;
+    //请求和controller方法的映射集合
+    private Map<RequestPathInfo, ControllerMethod> pathControllerMethodMap = new ConcurrentHashMap<>();
+
+    /**
+     * 依靠容器的能力，建立起请求路径，请求方法与Controller方法实例的映射
+     */
+    public ControllerRequestProcessor() {
+        this.beanContainer = BeanContainer.getInstance();
+        Set<Class<?>> requestMappingSet = beanContainer.getClassesByAnnotation(RequestMapping.class);
+        initPathControllerMethodMap(requestMappingSet);
+    }
+
+    /**
+     * 初始化映射map
+     *
+     * @param requestMappingSet 所有被@RequestMapping标记的类
+     */
+    private void initPathControllerMethodMap(Set<Class<?>> requestMappingSet) {
+        if (ValidationUtil.isEmpty(requestMappingSet)) return;
+        //1、遍历所有被@RequestMapping标记的类，获取类上面该注解的属性值作为一级路径
+        for (Class<?> requestMappingClass : requestMappingSet) {
+            RequestMapping requestMapping = requestMappingClass.getAnnotation(RequestMapping.class);
+            String basePath = requestMapping.value();
+            if (!basePath.startsWith("/")) {
+                basePath = "/" + basePath;
+            }
+            //2、遍历类里所有被@RequestMapping标记的方法，获取方法上面该注解的属性值，作为二级路径
+            Method[] methods = requestMappingClass.getDeclaredMethods();
+            if (ValidationUtil.isEmpty(methods)) continue;
+            for (Method method : methods) {
+                if (method.isAnnotationPresent(RequestMapping.class)) {
+                    RequestMapping methodRequest = method.getAnnotation(RequestMapping.class);
+                    String methodPath = methodRequest.value();
+                    if (!methodPath.startsWith("/")) {
+                        methodPath = "/" + methodPath;
+                    }
+                    String url = basePath + methodPath;
+                    //3、解析方法里被@RequestParam标记的参数
+                    //获取该注解的属性值，作为参数名
+                    //获取被标记的参数的数据类型，建立参数名和参数类型的映射
+                    Map<String, Class<?>> methodParams = new LinkedHashMap<>();
+                    Parameter[] parameters = method.getParameters();
+                    if (ValidationUtil.isEmpty(parameters)) continue;
+                    for (Parameter parameter : parameters) {
+                        RequestParam param = parameter.getAnnotation(RequestParam.class);
+                        //目前暂定为Controller方法里面所有的参数都需要@RequestParam注解
+                        if (param == null) {
+                            throw new RuntimeException("The parameter must have @RequestParam");
+                        }
+                        methodParams.put(param.value(), parameter.getType());
+                    }
+                    //4、将获取到的信息封装成RequestPathInfo实例和ControllerMethod实现，放置到映射表里
+                    String httpMethod = String.valueOf(methodRequest.method());
+                    RequestPathInfo requestPathInfo = new RequestPathInfo(httpMethod, url);
+                    if (this.pathControllerMethodMap.containsKey(requestPathInfo)) {
+                        log.warn("duplicate url:{} registration, current class {} method {} will override the former one",
+                                requestPathInfo.getHttpPath(), requestMappingClass.getName(), method.getName());
+                    }
+                    ControllerMethod controllerMethod = new ControllerMethod(requestMappingClass, method, methodParams);
+                    this.pathControllerMethodMap.put(requestPathInfo, controllerMethod);
+                }
+            }
+        }
+
+
+    }
+
+    @Override
+    public boolean process(RequestProcessorChain requestProcessorChain) throws Exception {
+        //1、解析HttpServletRequest的请求方法，请求路径，获取对应的ControllerMethod实例
+        String method = requestProcessorChain.getRequestMethod();
+        String path = requestProcessorChain.getRequestPath();
+        ControllerMethod controllerMethod = this.pathControllerMethodMap.get(new RequestPathInfo(method, path));
+        if (controllerMethod == null) {
+            requestProcessorChain.setResultRender(new ResourceNotFoundResultRender(method, path));
+            return false;
+        }
+        //2、解析请求参数，并传递给获取到的ControllerMethod实例去执行
+        Object result = invokeControllerMethod(controllerMethod, requestProcessorChain.getRequest());
+        //3、根据解析的结果，选择对应的render进行渲染
+        setResultRender(result, controllerMethod, requestProcessorChain);
+        return true;
+    }
+
+    /**
+     * 根据不同的情况设置不同的渲染器
+     *
+     * @param result                执行结果
+     * @param controllerMethod      controller method
+     * @param requestProcessorChain 调用链
+     */
+    private void setResultRender(Object result, ControllerMethod controllerMethod, RequestProcessorChain requestProcessorChain) {
+        if (result == null) {
+            return;
+        }
+        ResultRender resultRender;
+        boolean isJson = controllerMethod.getInvokeMethod().isAnnotationPresent(ResponseBody.class);
+        if (isJson) {
+            resultRender = new JsonResultRender(result);
+        } else {
+            resultRender = new ViewResultRender(result);
+        }
+        requestProcessorChain.setResultRender(resultRender);
+    }
+
+    /**
+     * 转发请求（通过反射invoke对应的method）
+     *
+     * @param controllerMethod controller method
+     * @param request          请求
+     * @return 结果
+     */
+    private Object invokeControllerMethod(ControllerMethod controllerMethod, HttpServletRequest request) {
+        //TODO:这存在一个问题，ControllerMethod中的Map是无序的，那么调用method的invoke时传入的参数顺序可能会出错，可以考虑在ControllerMethod中
+        // 加入一个有序的List或者使用LinkedHashMap、TreeMap等数据结构。
+        //1、从请求里获取GET或者POST的参数名及其对应的值
+        Map<String, String> requestParamMap = new HashMap<>();
+        //GET, POST方法的请求参数获取方式
+        Map<String, String[]> parameterMap = request.getParameterMap();
+        for (Map.Entry<String, String[]> parameter : parameterMap.entrySet()) {
+            if (!ValidationUtil.isEmpty(parameter.getValue())) {
+                //目前只支持一个参数对应一个值的形式
+                requestParamMap.put(parameter.getKey(), parameter.getValue()[0]);
+            }
+        }
+        //2、根据获取的请求参数名及其对应的值，以及controllerMethod里面的参数和类型的映射关系，去实例化出方法对应的参数
+        List<Object> methodParams = new ArrayList<>();
+        Map<String, Class<?>> methodParamMap = controllerMethod.getMethodParameters();
+        for (String paramName : methodParamMap.keySet()) {
+            Class<?> type = methodParamMap.get(paramName);
+            String requestValue = requestParamMap.get(paramName);
+            Object value;
+            //只支持String以及基础类型char，int，short，byte，double，long。float，boolean，以及他们的包装类型
+            if (requestValue == null) {
+                //将请求里的参数值转成适配于参数类型的空值
+                value = ConverterUtil.primitiveNull(type);
+            } else {
+                //url中的请求参数都是string，因此需要根据对应的controller method的类型做转换
+                value = ConverterUtil.convert(type, requestValue);
+            }
+            methodParams.add(value);
+        }
+        //3、执行controller里面对应的方法并返回结果
+        Object controller = beanContainer.getBean(controllerMethod.getControllerClass());
+        Method invokeMethod = controllerMethod.getInvokeMethod();
+        invokeMethod.setAccessible(true);
+        Object result;
+        try {
+            if (methodParams.size() == 0) {
+                result = invokeMethod.invoke(controller);
+            } else {
+                result = invokeMethod.invoke(controller, methodParams.toArray());
+            }
+        } catch (InvocationTargetException e) {
+            //如果是调用异常的话，需要通过e.getTargetException()去获取执行方法抛出的异常
+            throw new RuntimeException(e.getTargetException());
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+}
+```
+
+### Render矩阵的实现
+
+#### DefaultResultRender
+
+将response的状态码设置为200。
+
+```java
+/**
+ * 默认渲染器
+ * 对静态资源文件/static/或者jsp文件/templates的访问时，使用DefaultResultRender
+ * 将response的状态码设置为200
+ */
+public class DefaultResultRender implements ResultRender {
+    @Override
+    public void render(RequestProcessorChain requestProcessorChain) throws Exception {
+        requestProcessorChain.getResponse().setStatus(requestProcessorChain.getResponseCode());
+    }
+}
+```
+
+#### ResourceNotFoundResultRender
+
+在ControllerRequestProcessor中，如果对某个请求不存在匹配的ControllerMethod，那么将会设置这个Render。
+
+这个render会设置404状态码，并设置相应的错误信息。
+
+```java
+/**
+ * 资源找不到时用到的渲染器
+ */
+public class ResourceNotFoundResultRender implements ResultRender {
+    private String httpMethod;
+    private String httpPath;
+
+    public ResourceNotFoundResultRender(String method, String path) {
+        this.httpMethod = method;
+        this.httpPath = path;
+    }
+
+    @Override
+    public void render(RequestProcessorChain requestProcessorChain) throws Exception {
+        requestProcessorChain.getResponse().sendError(HttpServletResponse.SC_NOT_FOUND,
+                "获取不到对应的请求：请求路径[" + httpPath + "]" + "请求方法[" + httpMethod + "]");
+
+    }
+}
+```
+
+#### InternalErrorResultRender
+
+在所有processor中捕获异常时会设置该render，设置500状态码。
+
+```java
+/**
+ * 内部异常渲染器
+ */
+public class InternalErrorResultRender implements ResultRender {
+
+    private String errorMsg;
+
+    public InternalErrorResultRender(String errorMsg) {
+        this.errorMsg = errorMsg;
+    }
+
+    @Override
+    public void render(RequestProcessorChain requestProcessorChain) throws Exception {
+        requestProcessorChain.getResponse().sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, errorMsg);
+    }
+}
+```
+
+#### JsonResultRender
+
+在ControllerRequestProcessor中发现method上有`@ResponseBody`注解标记时，将会设置render。
+
+这个render会设置responser的响应头为"application/json"，设置编码为"UTF-8"，获取response输出流，将object类型的result转换成json字符串写入流中。
+
+```java
+/**
+ * Json渲染器
+ */
+public class JsonResultRender implements ResultRender {
+
+    private Object jsonData;
+
+    public JsonResultRender(Object jsonData) {
+        this.jsonData = jsonData;
+    }
+
+    @Override
+    public void render(RequestProcessorChain requestProcessorChain) throws Exception {
+        //设置响应头
+        requestProcessorChain.getResponse().setContentType("application/json");
+        requestProcessorChain.getResponse().setCharacterEncoding("UTF-8");
+        //响应流写入gson格式化后的处理结果
+        try (PrintWriter writer = requestProcessorChain.getResponse().getWriter()) {
+            Gson gson = new Gson();
+            writer.write(gson.toJson(jsonData));
+            writer.flush();
+        }
+    }
+}
+```
+
+#### ViewResultRender
+
+要解析视图，需要两个信息：
+
++ 页面路径（比如/templates/addheadline.jsp）
++ 页面data
+
+因此创建一个ModelAndView的类来表示上述信息的组合：
+
+```java
+/**
+ * 存储处理完后的结果数据，以及显示该数据的视图
+ */
+public class ModelAndView {
+    //页面所在的路径
+    @Getter
+    private String view;
+    //页面的data数据
+    @Getter
+    private Map<String, Object> model = new HashMap<>();
+
+    public ModelAndView setView(String view) {
+        this.view = view;
+        return this;
+    }
+
+    //为什么要返回this？
+    //这样设置可以通过调用链的形式调用，如：
+    //modelAndView.setView("addheadline.jsp").addViewData("aaa", "bbb");
+    public ModelAndView addViewData(String attributeName, Object attributeValue) {
+        model.put(attributeName, attributeValue);
+        return this;
+    }
+}
+```
+
+一般的，如果controller method没有标记`@ResponseBody`，那么返回的是视图。这里只考虑两种情况：
+
++ return "视图所在的路径"，将直接渲染静态页面，没有数据
++ return modelAndView，将数据渲染到页面上返回
+
+在构造出ViewResultRender实例时，ViewResultRender将会对内部ModelAndView进行初始化。
+
+在ViewResultRender的process中，resquest将ModelAndView中的数据设置上，然后通过`request.getRequestDispatcher(path).forward(request, response)`的方法进行转发，转发到对应的视图上。（这一步会再走一遍dispatcher，render将会调用JspRequestRender）
+
+```java
+/**
+ * 页面渲染器
+ */
+public class ViewResultRender implements ResultRender {
+
+    public static final String VIEW_PATH = "/templates/";
+    private ModelAndView modelAndView;
+
+    public ViewResultRender(Object mv) {
+        if (mv instanceof ModelAndView) {
+            //1、如果入参类型是ModelAndView，则直接赋值给成员变量
+            this.modelAndView = (ModelAndView) mv;
+        } else if (mv instanceof String) {
+            //2、如果入参类型是String，则为视图，需要包装后才赋值给成员变量
+            this.modelAndView = new ModelAndView().setView((String) mv);
+        } else {
+            //3、针对其他情况，则直接抛出异常
+            throw new RuntimeException("illegal request result type");
+        }
+    }
+
+    /**
+     * 将请求处理结果按照视图路径转发至对应视图进行展示
+     *
+     * @param requestProcessorChain 请求处理器责任链
+     * @throws Exception
+     */
+    @Override
+    public void render(RequestProcessorChain requestProcessorChain) throws Exception {
+        HttpServletRequest request = requestProcessorChain.getRequest();
+        HttpServletResponse response = requestProcessorChain.getResponse();
+        String path = modelAndView.getView();
+        Map<String, Object> model = modelAndView.getModel();
+        for (Map.Entry<String, Object> entry : model.entrySet()) {
+            request.setAttribute(entry.getKey(), entry.getValue());
+        }
+        request.getRequestDispatcher(VIEW_PATH + path).forward(request, response);
+    }
+}
+```
+
 ## 小tip
 
 可以设置VM参数来更好地研究源码：
