@@ -27,17 +27,11 @@ configure(allprojects) { project ->
 }
 ```
 
-## Bean与BeanDefinition
+## 容器初始化主要做的事情
 
-### Bean是Spring的一等公民
+<img src="../../pic/203.jpg" style="zoom:80%;" />
 
-Bean本质上就是java对象，只是这个对象的声明周期由容器来管理。
-
-不需要为了创建Bean而在原来的java类上添加任何额外的限制。（低侵入性）
-
-对java对象的控制方式体现在配置上。
-
-### BeanDefinition
+## BeanDefinition
 
 根据配置，生成用来描述Bean的BeanDefinition，常用属性：
 
@@ -77,7 +71,7 @@ user3是通过工厂`UserFactory`的方法`getUser`创建的，注意`UserFactor
 
 > 注意，单例是对bean而言的，并非对类类型。
 
-对于userFactoryBean，它是UserFactoryBean类型，实现了`FActoryBean<T>`接口：
+对于userFactoryBean，它是UserFactoryBean类型，实现了`FactoryBean<T>`接口：
 
 ```java
 public class UserFactoryBean implements FactoryBean<User> {
@@ -101,17 +95,82 @@ public class UserFactoryBean implements FactoryBean<User> {
 
 > Spring中存在两个名字很相似的接口：BeanFactory和FactoryBean。
 >
-> BeanFactory是用于实现Spring IOC容器的接口，而FactoryBean只是一个作为简单工厂的Bean接口。
+> BeanFactory是用于实现Spring IOC容器的接口，而FactoryBean只是一个作为简单工厂的Bean接口，只有getObject、getObjectType、isSington方法。
 
-## ApplicationContext常用容器
+### more about BeanDefinition
 
-### 传统的基于XML配置的经典容器
+<img src="../../pic/204.png" style="zoom:80%;" />
+
++ RootBeanDefinition可以单独作为一个BeanDefinition，也可以作为其他BeanDefinition的父类。但是他不能作为其他BeanDefinition的子类（在setParentName的时候，会抛出一个异常）
++ ChildBeanDefinition相当于一个子类，不可以单独存在，必须要依赖一个父BeanDetintion。（parentName属性是通过构造方法设置的，而且并没有提供无参构造方法)
++ GenericBeanDefinition是一个通用类，观察他源码跟ChildBeanDefinition很像，可以替代ChildBeanDefinition。
++ RootBeanDefinition的域和方法远多于GenericBeanDefinition，定义root bean时应该尽量使用RootBeanDefinition。
++ BeanDefinition之间的关系不是通过继承来表现的，而是通过parentName属性表现的。
+
+## IOC容器
+
+### BeanFactory
+
+<img src="../../pic/205.png" style="zoom:80%;" />
+
+需要注意的是`FACTORY_BEAN_PREFIX`这个域，这个域提供获取FactoryBean的方法，如果使用bean的名字检索FactoryBean得到的对象是工厂生成的对象，如果需要得到工厂本身，那么需要转义，即bean名字前加个前缀"&"。
+
+bean都是由BeanFactory的实现类来管理的。
+
+### 简单容器
+
+
+
+<img src="../../pic/206.png" style="zoom:80%;" />
+
+#### ListableBeanFactory
+
+<img src="../../pic/208.png" style="zoom:80%;" />
+
+这个接口最大的特点就是可以根据需要列出对应的BeanDefinition、BeanName列表。
+
+#### HierarchicalBeanFactory
+
+<img src="../../pic/209.png" style="zoom:80%;" />
+
+这个接口使得BeanFactory之间具备层级关系。
+
+注意`containsLocalBean`只会在本层的容器中查找，不会去父类容器查找。
+
+#### AutowireCapableBeanFactory
+
+<img src="../../pic/210.png" style="zoom:80%;" />
+
+从宏观上看，AutowireCapableBeanFactory提供了如下能力：
+
+ 1 为已经实例化的对象装配属性，这些属性对象都是Spring管理的；
+
+ 2 实例化一个Bean，并自动装配，这些被装配的属性对象都是Spring管理的，但是实例化的Bean可以不被Spring管理（这点特别重要）。所以这个接口提供功能就是自动装配bean相关的
+
+ (自动装配的原对象可以不在Spring的IOC容器里，但是需要被依赖注入的成员，就必须是Spring容器管辖的Bean)
+ 此接口主要是针对框架之外，没有向Spring托管Bean的应用。通过暴露此功能，Spring框架之外的程序，也能具有自动装配的能力（此接口赋予它的）。
+
+ 可以使用这个接口集成其它框架。捆绑并填充（注入）并不由Spring管理生命周期并已存在的实例.像集成WebWork的Actions和Tapestry Page就很实用。
+ 一般应用开发者不会使用这个接口,所以像ApplicationContext这样的外观实现类不会实现这个接口。
+
+### 高级容器
+
+<img src="../../pic/207.png"  />
+
+```java
+public interface ApplicationContext extends EnvironmentCapable, ListableBeanFactory, HierarchicalBeanFactory,
+      MessageSource, ApplicationEventPublisher, ResourcePatternResolver {
+          ...;
+      }
+```
+
+#### 传统的基于XML配置的经典容器
 
 + FileSystemXmlApplicationContext：从文件系统加载配置
 + ClassPathXmlApplicationContex：从classpath加载配置
 + XmlWebApplicationContext：用于Web应用程序的容器
 
-### 目前比较流行的容器
+#### 目前比较流行的容器
 
 + AnnotationConfigServletWebServerApplicationContext
 + AnnotationConfigReactiveWebServerApplicationContext
@@ -148,14 +207,99 @@ refresh()大致功能：
 + 自动识别"classpath:"、"file:"等资源地址前缀
 + 支持自动解析Ant风格带通配符的资源地址
 
+### Resource
+
+Resource代表底层外部资源，提供了对底层外部资源的一致性访问接口。
+
+<img src="../../pic/211.png" style="zoom:80%;" />
+
 ### ResourceLoader
 
-实现不同的ResourceLoader加载策略，按需返回特定类型的Resource
+实现不同的ResourceLoader加载策略，按需返回特定类型的Resource，可以看做是一个生产Resource的工厂类，根据传入一个资源路径返回对应类型的Resource。
 
-### BeanDefinitionReader
+<img src="../../pic/212.png" style="zoom:80%;" />
 
-+ 读取BeanDefinition
-+ BeanDefinitionRegistry
+其中，DefaultResourceLoader的getResource方法只支持单次解析，如果需要解析多条location，那么需要重复调用多次。
+
+如果需要一次性解析多个location，采用Ant风格的location，建议使用实现了ResourcePatternResolver接口的PathMatchingResourcePatternResolver。
+
+DefaultResourceLoader的getResource方法：
+
+```java
+//获取Resource的具体实现类实例
+@Override
+public Resource getResource(String location) {
+   Assert.notNull(location, "Location must not be null");
+   //ProtocolResolver ，用户自定义协议资源解决策略
+   for (ProtocolResolver protocolResolver : getProtocolResolvers()) {
+      Resource resource = protocolResolver.resolve(location, this);
+      if (resource != null) {
+         return resource;
+      }
+   }
+   //如果是以/开头，则构造ClassPathContextResource返回
+   if (location.startsWith("/")) {
+      return getResourceByPath(location);
+   }
+   //若以classpath:开头，则构造ClassPathResource 类型资源并返回，在构造该资源时，
+   //通过 getClassLoader()获取当前的ClassLoader
+   else if (location.startsWith(CLASSPATH_URL_PREFIX)) {
+      return new ClassPathResource(location.substring(CLASSPATH_URL_PREFIX.length()), getClassLoader());
+   }
+   else {
+      // 构造 URL ，尝试通过它进行资源定位，若没有抛出 MalformedURLException 异常，
+      // 则判断是否为 FileURL , 如果是则构造 FileUrlResource 类型资源，否则构造 UrlResource。
+      // 若在加载过程中抛出 MalformedURLException 异常，
+      // 则委派 getResourceByPath() 实现资源定位加载
+      try {
+         // Try to parse the location as a URL...
+         URL url = new URL(location);
+         return (ResourceUtils.isFileURL(url) ? new FileUrlResource(url) : new UrlResource(url));
+      }
+      catch (MalformedURLException ex) {
+         // No URL -> resolve as resource path.
+         return getResourceByPath(location);
+      }
+   }
+} 
+```
+ 因为PathMatchingResourcePatternResolver的getResources方法比较复杂，这里只贴ResourcePatternResolver接口，可以看出getResources方法的返回值是Resource数组，接受的location可以是Ant风格的字符串。
+
+```java
+public interface ResourcePatternResolver extends ResourceLoader {
+
+   /**
+    * Pseudo URL prefix for all matching resources from the class path: "classpath*:"
+    * This differs from ResourceLoader's classpath URL prefix in that it
+    * retrieves all matching resources for a given name (e.g. "/beans.xml"),
+    * for example in the root of all deployed JAR files.
+    * @see org.springframework.core.io.ResourceLoader#CLASSPATH_URL_PREFIX
+    */
+   String CLASSPATH_ALL_URL_PREFIX = "classpath*:";
+
+   /**
+    * Resolve the given location pattern into Resource objects.
+    * <p>Overlapping resource entries that point to the same physical
+    * resource should be avoided, as far as possible. The result should
+    * have set semantics.
+    * @param locationPattern the location pattern to resolve
+    * @return the corresponding Resource objects
+    * @throws IOException in case of I/O errors
+    */
+   Resource[] getResources(String locationPattern) throws IOException;
+
+}
+```
+
+## BeanDefinitionReader
+
+BeanDefinitionReader是一个接口，用于从单个或多个配置文件（Resource）中加载BeanDefinition（即读取配置文件，生成对应的BeanDefinition）。
+
+<img src="../../pic/214.png" style="zoom:80%;" />
+
+以下是BeanDefinitionReader的继承关系图：
+
+<img src="../../pic/215.png" style="zoom:80%;" />
 
 关键词：
 
@@ -165,6 +309,8 @@ refresh()大致功能：
 + BeanDefinitionReader
 + BeanDefinitionRegistry
 + DefaultListableBeanFactory
+
+## BeanDefinitionRegistry
 
 ## 容器初始化主要做的事情
 
