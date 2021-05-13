@@ -31,6 +31,8 @@ configure(allprojects) { project ->
 
 <img src="../../pic/203.jpg" style="zoom:80%;" />
 
+首先将配置文件读取到内存中，这些配置将会被当做Resource对象，然后被解析成BeanDefinition实例，最后注册到spring容器中。
+
 ## BeanDefinition
 
 根据配置，生成用来描述Bean的BeanDefinition，常用属性：
@@ -301,6 +303,8 @@ BeanDefinitionReader是一个接口，用于从单个或多个配置文件（Res
 
 <img src="../../pic/215.png" style="zoom:80%;" />
 
+其中，XmlBeanDefinitionReader用于读取xml配置文件，PropertiesBeanDefinitionReader用于读取properties配置文件，AnnotatedBeanDefinition用于读取注解相关的配置。
+
 关键词：
 
 + location
@@ -312,9 +316,14 @@ BeanDefinitionReader是一个接口，用于从单个或多个配置文件（Res
 
 ## BeanDefinitionRegistry
 
-## 容器初始化主要做的事情
+<img src="../../pic/267.png" style="zoom:80%;" />
 
-首先将配置文件读取到内存中，这些配置将会被当做Resource对象，然后被解析成BeanDefinition实例，最后注册到spring容器中。
+可以查看它的一个实现类DefaultListableBeanFactory，简答来说，最终将注册的bean放入一个ConcurrentHashMap中存储：
+
+```java
+/** Map of bean definition objects, keyed by bean name. */
+private final Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
+```
 
 ## 后置处理器PostProcessor
 
@@ -332,13 +341,128 @@ BeanDefinitionReader是一个接口，用于从单个或多个配置文件（Res
 + BeanFactoryPostProcessor
 + BeanPostProcessor
 
-## Spring的时间驱动模型
+## Aware
+
+Aware是一个空接口，用于标记。
+
+<img src="../../pic/268.png" style="zoom:80%;" />
+
+实现了Aware接口的类可以获取不同的容器实例并对其进行操作，例如实现了ApplicationContextAware接口的类可以获得ApplicationContext容器，实现了BeanFactoryAware接口的类可以获得BeanFactory容器。
+
+每个Aware接口都有setter方法，例如ApplicationContextAware接口：
+
+<img src="../../pic/269.png" style="zoom:80%;" />
+
+spring容器会自动调用这些setter方法。
+
+## Spring的事件驱动模型
 
 事件驱动模型的三大组成部分
 
 + 事件：ApplicationEvent抽象类
 + 事件监听器：ApplicationLIstener
-+ 事件发布器：Publish以及Multicaster
++ 事件发布器：Publisher以及Multicaster
+
+### 事件
+
+<img src="../../pic/270.png" style="zoom:80%;" />
+
+由名字可以看出他们的作用：
+
++ ContextStartedEvent：容器启动后触发的事件
++ ContextStoppedEvent：容器停止后触发的事件
++ ContextClosedEvent：容器关闭后触发的事件
++ ContextRefreshedEvent：容器初始化或刷新后触发的事件
+
+查看ApplicationEvent的构造器：
+
+```java
+public ApplicationEvent(Object source) {
+   super(source);
+   this.timestamp = System.currentTimeMillis();
+}
+```
+
+传入的source为事件源。
+
+### 监听器
+
+<img src="../../pic/271.png" style="zoom:80%;" />
+
+ApplicationListener接口只有一个处理event的方法。
+
+#### SmartApplicationListener
+
+额外实现了Order接口，因此该类监听器具备排序的功能。
+
+<img src="../../pic/272.png" style="zoom:80%;" />
+
+`supportsEventType`和`supportsSourceType`方法支持对事件、源的过滤。
+
+#### GenericApplicationListener
+
+<img src="../../pic/273.png" style="zoom:80%;" />
+
+跟SmartApplicationListener非常类似，只不过supportsEventType的接受参数为ResolvableType类型，它可以获取泛型信息。
+
+### 发布器
+
+#### ApplicationEventPublisher
+
+<img src="../../pic/274.png" style="zoom:80%;" />
+
+#### ApplicationEventMulticaster
+
+<img src="../../pic/275.png" style="zoom:80%;" />
+
+注意，ApplicationContext继承了ApplicationEventPublisher接口。
+
+ApplicationEventPublisher只有发布的功能，而ApplicationEventMulticaster拥有发布、维护监听器等功能。
+
+Spring为什么定义了Multicaster还要定义Publisher呢？设计者只想让ApplicationContext拥有publish的功能，而且Multicaster可以作为Publisher的代理类。
+
+## Spring容器的刷新
+
+以下是刷新的步骤：
+
++ prepareRefresh：刷新前的工作准备
+  + 调用容器准备刷新的方法，获取容器的当前时间，同时给容器设置同步标识（容器的状态设置为激活）
+  + 初始化Enviroment的propertySources属性
+  + 校验Enviroment的requiredProperties是否都存在
+  + 检查是否有监听器，如果有，那么将他们都加入到一个set中
+  + 创建事件的集合
++ obtainFreshBeanFactory：获取子类刷新后的内部beanFactory实例
+  + 调用子类实现的refreshBeanFactory()方法，Bean定义资源文件的载入从子类的refreshBeanFactory（）方法启动，里面有抽象方法；针对xml配置，最终创建内部容器，该容器负责Bean的创建与管理，此步会进行BeanDefinition的注册
++ prepareBeanFactory：为容器注册必要的系统级别的Bean，例如classloader，beanfactoryPostProcessor等
+  + 设置内部bean工厂使用容器的类加载器
+  + 设置beanFactory的表达式语言处理器，Spring3开始增加了对语言表达式的支持，默认可以使用#{bean.xxx}的形式来调用相关属性值
+  + 为beanFactory增加一个默认的propertyEditor
+  + 添加beanPostProcessor：当应用程序定义的Bean实现ApplicationContextAware接口时注入ApplicationContext对象
+  + 如果某个bean依赖以下几个接口的实现类，在自动装配的时候忽略它们，Spring会通过其他方式来处理这些依赖：
+    + EnviromentAware.class
+    + EmbeddedValueResolverAware.class
+    + ResourceLoaderAware.class
+    + ApplicationEventPublisherAware.class
+    + MessageSourceAware.class
+    + ApplicationContextAware.class
+  + 修正部分依赖
+  + 添加beanPostProcessor：用于检测内部bean是否是ApplicationListener，如果是，那么加入到事件监听者队列
+  + 注册默认enviroment环境bean
++ postProcessBeanFactory：允许容器的子类去注册postProcessor，是一个钩子方法
++ invokeBeanFactoryPostProcessors：调用容器注册的容器级别的后置处理器
+  + 实例化并调用所有已注册的BeanFactoryPostProcessor的bean，如果已给出顺序（Order接口），将按照顺序调用。
+    + BeanFacotryPostProcessors主要分为两类，一类是BeanDefinitionRegistry的BeanFactoryPostProcessor，另外一类是常规的BeanFactoryPostProcessor。 优先处理前者。
+    + BeanDefinitionRegistry将扫描所有的BeanDefinition并注册到容器之中。
++ registerBeanPostProcessors：注册拦截bean创建过程的BeanPostProcessor（例如AOP织入）
++ initMessageSource：初始化国际化配置
++ initApplicationEventMulticaster：初始化事件发布者组件
++ onRefresh：在单例Bean初始化之前预留给子类初始化其他特殊bean口子，钩子方法
+  + 该方法需要在所有单例bean初始化之前调用
+  + 比如Web容器就会去初始化一些和主题展示相关的bean（ThemeSource）
++ registerListeners：向前面的事件发布者组件注册事件监听者
++ finishBeanFactoryInitialization：设置系统级别的服务，实例化所有非懒加载的单例
++ finishRefresh：触发初始化完成的回调方法，并发布容器刷新完成的事件给监听器
++ resetCommonCaches：重置spring内核中的共用缓存
 
 ## Spring是否支持所有循环依赖的情况
 
