@@ -431,8 +431,11 @@ Spring为什么定义了Multicaster还要定义Publisher呢？设计者只想让
   + 校验Enviroment的requiredProperties是否都存在
   + 检查是否有监听器，如果有，那么将他们都加入到一个set中
   + 创建事件的集合
+  
 + obtainFreshBeanFactory：获取子类刷新后的内部beanFactory实例
+  
   + 调用子类实现的refreshBeanFactory()方法，Bean定义资源文件的载入从子类的refreshBeanFactory（）方法启动，里面有抽象方法；针对xml配置，最终创建内部容器，该容器负责Bean的创建与管理，此步会进行BeanDefinition的注册
+  
 + prepareBeanFactory：为容器注册必要的系统级别的Bean，例如classloader，beanfactoryPostProcessor等
   + 设置内部bean工厂使用容器的类加载器
   + 设置beanFactory的表达式语言处理器，Spring3开始增加了对语言表达式的支持，默认可以使用#{bean.xxx}的形式来调用相关属性值
@@ -448,21 +451,116 @@ Spring为什么定义了Multicaster还要定义Publisher呢？设计者只想让
   + 修正部分依赖
   + 添加beanPostProcessor：用于检测内部bean是否是ApplicationListener，如果是，那么加入到事件监听者队列
   + 注册默认enviroment环境bean
+  
 + postProcessBeanFactory：允许容器的子类去注册postProcessor，是一个钩子方法
+
 + invokeBeanFactoryPostProcessors：调用容器注册的容器级别的后置处理器
   + 实例化并调用所有已注册的BeanFactoryPostProcessor的bean，如果已给出顺序（Order接口），将按照顺序调用。
     + BeanFacotryPostProcessors主要分为两类，一类是BeanDefinitionRegistry的BeanFactoryPostProcessor，另外一类是常规的BeanFactoryPostProcessor。 优先处理前者。
     + BeanDefinitionRegistry将扫描所有的BeanDefinition并注册到容器之中。
+  
 + registerBeanPostProcessors：注册拦截bean创建过程的BeanPostProcessor（例如AOP织入）
+
 + initMessageSource：初始化国际化配置
+
 + initApplicationEventMulticaster：初始化事件发布者组件
+
 + onRefresh：在单例Bean初始化之前预留给子类初始化其他特殊bean口子，钩子方法
-  + 该方法需要在所有单例bean初始化之前调用
+  + 该方法在所有单例bean初始化之前调用
   + 比如Web容器就会去初始化一些和主题展示相关的bean（ThemeSource）
-+ registerListeners：向前面的事件发布者组件注册事件监听者
+  
++ registerListeners：向前面的事件发布者组件注册事件监听器
+
 + finishBeanFactoryInitialization：设置系统级别的服务，实例化所有非懒加载的单例
+
+  + 初始化类型转化器ConversionService（用于处理通过配置给Bean实例成员变量赋值的时候的类型转换工作）
+
+  + 设置自定义AOP相关的类LoadTimeWeaverAware
+
+    > AOP分为三种方式：编译期织入、类加载期织入、运行期织入。
+    >
+    > LoadTimeWeaving属于第二种，主要通过JVM进行织入。
+
+  + 清除临时的ClassLoader，实例化所有的类（懒加载的类除外）
+
+    > 实例化类的逻辑：遍历BeanName，获取到对应的BeanDefinition实例，根据BeanDefinition的信息了解该bean是否为abstract、singleton、lazyinit等，实例化非abstract、singleton、非lazyinit的bean。
+
+  + 此时bean处理完成，
+
 + finishRefresh：触发初始化完成的回调方法，并发布容器刷新完成的事件给监听器
-+ resetCommonCaches：重置spring内核中的共用缓存
+
+  + 清除上下文级别的资源缓存（如扫描的ASM元数据）
+  + 为上下文初始化声明周期处理器（LIfecycleProcessor）
+  + 将刷新传播到生命周期处理器（调用lifecycleProcessor.refresh()方法）
+  + 发布容器刷新完成的事件给监听器
+
++ resetCommonCaches：重置spring内核中的共用缓存，因为不需要单例bean的元数据了
+
+## 循环依赖与三级缓存
+
+### createBean
+
++ 根据BeanDefinition对Bean类型进行解析
++ 查看是否配置request-method或者lookup-method属性，检查是否有相关的覆盖方法，并做相应的标记
++ Bean实例化前的后置处理
++ doCreateBean
+  + 创建Bean实例（工厂方法、含参构造器注入、无参构造器注入）
+  + 记录下被@Autowired或者@Value标记上的方法或成员变量，放入InjectionMetaData的类中，便于后续的依赖注入处理
+  + 判断是否允许提前早起暴露，即bean是否是单例且支持循环依赖
+  + 填充Bean属性
+  + initializeBean
+    + 如果实现了Aware接口，则设值
+    + 初始化前操作
+    + 初始化
+    + 初始化后操作
+  + 注册相关销毁逻辑
+  + 返回创建好的实例
+
+### getSingleton
+
++ DefaultSingletonRegistry#getSingleton：获取单例实例
+  + 如果支持循环依赖则生成三级缓存（singletonFactories），可以提前暴露bean
+  + 三级缓存：解决循环依赖
+    + 一级缓存singletonObjects，类型为ConcurrentHashMap，用于缓存完备的bean
+    + 二级缓存earlySingletonObjects，类型为HashMap，用于缓存实例化之后但属性未赋值的单例对象(正在创建)
+    + 三级缓存singletonFactories，类型为HashMap，单例工厂ObjectFactory的缓存
+    + 二级、三级缓存使用非线程安全的map，是因为在对这些缓存操作时都会对一级缓存加锁。
+  + 尝试从一级缓存获取完备的bean，单例一级缓存在`singletonObjects`中，是一个ConcurrentHashMap
+  + 如果完备的bean还没有创建出来，并且处于正在创建状态
+    + 对一级缓存上锁，尝试从二级缓存中获取属性为赋值的实例，如果二级缓存中命中，那么返回
+    + 如果二级缓存中没有，并且bean允许被循环引用（第二个参数`allowEarlyReference`为true），那么从三级缓存中获取bean的单例工厂实例，使用该工厂实例的getObject获得bean实例，然后将该bean实例放入二级缓存，将该工厂实例从三级缓存中清除，返回。
+
+### populateBean
+
+主要作用：
+
++ 调用Bean的setter方法实例去给Bean设置上属性值
++ 变量类型的转换，同时还要考虑处理集合类型的情况
++ 处理显式自动装配的逻辑（autowire=byName/byType）
+
+具体流程：
+
++ postProcessAfterInstantiation：在设置属性前去修改Bean状态，也可以控制是否继续给Bean设置属性值
++ 注入属性到PropertyValues中（按名字装配or按类型装配）
++ postProcessPropertyValues：对解析完但未设置的属性进行再处理
++ 是否进行依赖检查
++ 将PropertyValues中的属性值设置到BeanWrapper中
+
+### 流程
+
+假设A与B相互依赖，当创建A时：
+
+首先new出没有任何属性的A的实例，之后检查A是否支持循环依赖，如果支持，那么addSingletonFactory，添加到三级缓存，随后调用populateBean给属性赋值，因为A依赖于B，那么会调用getBean方法尝试获取B实例，但是B并没有创建出来，且缓存中也没有，因此会调用doCreateBean对B进行创建。
+
+然后new出没有任何属性的B的实例，之后检查B是否支持循环依赖，如果支持，那么addSingletonFactory，添加到三级缓存，此时三级缓存保存了A和B的ObjectFactory。随后调用populateBean给属性赋值，因为B依赖于A，那么会调用getBean方法尝试获取A实例，从三级缓存中获取A的ObjectFactory，调用ObejctFactory的getObject的方法获取A的实例（这个被后置处理器处理过的实例，AOP代理等），获取到之后，将A的实例放入二级缓存，移除三级缓存，然后将A实例返回。那么现在已经将A实例注入到B里面了，那么B已经是完备的了，然后将B实例加入一级缓存，并移除B的二级缓存和三级缓存，将完备的B实例返回到创建A的调用栈popularBean方法中。
+
+回到A的pupularBean中，将B的实例注入到A中，那么A也完备了，然后将A的实例放入到一级缓存，清除其他级别的缓存。
+
+<img src="../../pic/276.jpg" style="zoom:80%;" />
+
+>二级缓存用于解决循环依赖的问题，但是如果需要AOP代理，那么需要三级缓存来处理，三级缓存的工厂可以进行AOP代理，返回代理对象。
+>
+>A，B循环依赖，先初始化A，暴露一个半成品A，再去初始化依赖的B，初始化B时如果发现B依赖A，也就是循环依赖，就注入半成品A，之后初始化完毕B，再回到A的初始化过程时就解决了循环依赖，在这里只需要一个Map能缓存半成品A就行了，也就是二级缓存就够了，但是这个二级缓存存的是Bean对象，如果这个对象存在代理，那应该注入的是代理，而不是Bean，此时二级缓存无法及缓存Bean，又缓存代理，因此三级缓存做到了缓存工厂 ，也就是生成代理。
 
 ## Spring是否支持所有循环依赖的情况
 
