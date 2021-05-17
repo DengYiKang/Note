@@ -577,7 +577,111 @@ Spring为什么定义了Multicaster还要定义Publisher呢？设计者只想让
 
 ### Spring不支持单例构造器的循环依赖
 
+解决循环依赖的核心在于三级缓存，先new出bean实例然后进行依赖注入。如果new出bean实例时立即需要传入构造参数，那肯定是不行的。除非在构造参数前加一个注解`@Lazy`，允许延迟加载。
+
 ### Spring支持单例的setter注入循环依赖
+
+## AOP
+
+### 概念
+
++ 切面Aspect：将横切关注点逻辑进行模块化封装的实体对象，由 pointcount 和 advice 组成。可以简单地认为, 使用 @Aspect 注解的类就是切面。
++ 通知Advice：好比是Class里面的方法，还定义了织入逻辑的时机，切面类的方法就是Advice
+  + BeforeAdvice：在JoinPoint前被执行的Advice
+  + AfterAdvice：好比try...catch...finally中的finally
+  + AfterReturningAdvice：在JoinPoint执行流程正常返回后被执行
+  + AfterThrowingAdvice：JoinPoint执行过程中抛出异常才会触发
+  + AroundAdvice：在JoinPoint执行前和后都执行，最常用的Advice。（这个方法的入参有JoinPoint，joinPoint.proceed为joinPoint的执行，执行前后都可以自定义逻辑）
+  + 单个Aspect执行顺序：
+    + <img src="../../pic/277.jpg" style="zoom:80%;" />
+  + 多个Aspect的执行顺序：
+    + <img src="../../pic/278.jpg" style="zoom:80%;" />
++ 连接点JoinPoint：一个时间点，允许使用Advice的地方
+  + SpringAOP默认只支持方法级别的JoinPoint
++ 切入点Pointcut：定义一系列规则对JoinPoint进行筛选。在Spring中，所有的方法可以被认为是JoinPoint，因此需要定义筛选规则，给满足规则的JoinPoint添加Advice
++ 目标对象Target：织入advice的目标对象，也被称为adviced object。
++ AOP proxy：一个类被AOP织入advice，就会产生一个代理类。在SpringAOP中，一个AOP代理是一个JDK动态代理对象或CGLIB代理对象。
+
+### BeanPostProcessor家族
+
+<img src="../../pic/279.png" style="zoom:80%;" />
+
+#### BeanPostProcessor
+
+<img src="../../pic/280.png" style="zoom:80%;" />
+
+#### InstantiationAwareBeanPostProcessor
+
+这个类作用在bean的实例化时，注意与BeanPostProcessor不同的是，BeanPostProcessor作用在bean的初始化时，而实例化在初始化之前。
+
+<img src="../../pic/281.png" style="zoom:80%;" />
+
++ `postProcessBeforeInstantiation`：bean实例化之前调用。该方法返回一个Object对象，这个返回值可以替代原本需要实例化的对象，如果返回值不会null，那么bean已经被该方法替换。
++ `postProcessAfterInstantiation`：bean实例化之后，在设置属性之前调用。返回值为boolean，用于判断是否继续去执行对属性赋值的流程。如果不希望spring对某些bean进行依赖注入，而是通过自定义的逻辑来处理，那么可以实现这个方法。
++ `postProcessProperties`：入参为bean、beanName以及PropertyValues，在PropertyValues赋值给bean的域之前调用。Spring的依赖注入功能就是通过这个方法实现的，获取类中@Autowired相关注解的元信息，然后注入到PropertyValue中，后将PropertyValue返回。
+
+#### SmartInstantiationAwareBeanPostProcessor
+
+该类是InstantiationAwareBeanPostProcessor的一个扩展接口。
+
+<img src="../../pic/282.png" style="zoom:80%;" />
+
++ `predictBeanType`：执行时机不固定。当BeanDefinition无法判断bean类型时，将调用该方法进行判断。
++ `determineCandidateConstructors`：候选构造器。当未通过bean定义构造器以及参数的情况下，会根据这个回调函数返回构造器。
++ `getEarlyBeanReference`：获取要提前暴露的bean的引用，用来支持单例对象的循环引用。用于循环依赖的处理中的三级缓存的生成：`addSingletonFactory(beanName, ()->getEarlyBeanReference(beanName, mdb, bean))`。==注意，AbstractAutoProxyCreator继承了这个接口，该该方法返回一个proxy，因此addSingletonFactory将proxy放到了三级缓存中！==
+
+#### MergedBeanDefinitionPostProcessor
+
+用来将merged BeanDefinition暴露出来。
+
+<img src="../../pic/283.png" style="zoom:80%;" />
+
++ `postProcessMergedBeanDefinition`：
+  + 实例化之后，addSingletonFactory之前
+  + 在bean实例化完毕后调用 可以用来修改merged BeanDefinition的一些properties 或者用来给后续回调中缓存一些meta信息使用
+  + 这个算是将merged BeanDefinition暴露出来的一个回调
+  + 重点关注AutowiredAnnotationBeanPostProcessor，该类会把@Autowired等标记的需要依赖注入的成员变量或者方法实例给记录下来，方便后续populateBean使用
+
+### @EnableAspectAutoProxy
+
+<img src="../../pic/284.png" style="zoom:80%;" />
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Import(AspectJAutoProxyRegistrar.class)
+public @interface EnableAspectJAutoProxy {
+    boolean proxyTargetClass() default false;
+    boolean exposeProxy() default false;
+}
+```
+
+Import注解能把目标AspectJAutoProxyRegistrar作为bean管理起来。
+
++ `boolean proxyTargetClass() default false`：表明该类采用CGLIB代理还是使用JDK的动态代理，Spring会尽量使用CGLIB来代理。
+
++ `boolean exposeProxy() default false`：
+
+  解决内部调用不能使用代理的场景，默认为false表示不处理
+  
+  * true则表示这个代理对象的副本就可以通过AopContext.currentProxy()获得（ThreadLocal里面），从而我们可以很方便得在Spring框架上下文中拿到当前代理对象（处理事务时很方便）
+
+### AutoProxyCreator家族
+
+![](../../pic/285.png)
+
+#### AopInfrastructureBean
+
+只做标记使用。如果bean实现了这个接口，表明它是SpringAOP的基础类，那么这个类是不会被AOP给代理的。
+
+### TargetSource
+
+<img src="../../pic/286.png" style="zoom:80%;" />
+
+### 代理生成阶段
+
+<img src="../../pic/287.jpg" style="zoom:80%;" />
 
 ## keyword
 

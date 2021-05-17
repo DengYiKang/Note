@@ -1113,6 +1113,157 @@ public class AspectWeaverTest {
 
 + Aspect只支持对被某个标签标记的类进行横切逻辑的织入
 + 需要借助AspectJ来达到上述目的
++ 这里使用的调用链的模式存在问题，即某些拦截方法无法精确到Aspect。例如存在三个Aspect，order排序为a->b->c，假设错误发生在b的aftreReturning，那么c的afterThrowing就不应该发生，但是目前的这种模式下c的afterThrowing会发生。因此应该采用SpringAOP所采用的责任链模式。
+
+### 改进：责任链模式
+
+引入一个调用链InterceptorChain，一个拦截器MyInterceptor，伪代码如下：
+
+```
+InterceptorChain
+	List<MyInterceptor> list
+	index=0
+	object proceed():
+		if index==len then:
+			return methodProxy.invokeSuper(obj, args)
+		return list.get(index++).invoke(this)
+
+MyInterceptor
+	object invoke(obj):
+		before()
+		obj.proceed
+		after()
+```
+
+那么在MethodInterceptor中只需要初始化InterceptorChain和MyInterceptor了。
+
+代码如下：
+
+```java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class TargetMethod {
+    private Object targetObject;
+    private Method method;
+    private Object[] args;
+}
+
+public interface interceptor {
+    Object invoke(InterceptorChain chain) throws Throwable;
+}
+```
+```java
+public class InterceptorChain {
+    private List<MyInterceptor> interceptorList;
+    private MethodProxy methodProxy;
+    private Object targetObject;
+    private Object[] args;
+    private int index;
+
+    public InterceptorChain(List<MyInterceptor> list, Object targetObject, MethodProxy methodProxy, Object[] args) {
+        this.interceptorList = list;
+        this.targetObject = targetObject;
+        this.methodProxy = methodProxy;
+        this.args = args;
+        index = 0;
+    }
+
+    public Object proceed() throws Throwable {
+        if (index == interceptorList.size()) {
+            return methodProxy.invokeSuper(targetObject, args);
+        }
+        return interceptorList.get(this.index++).invoke(this);
+    }
+}
+```
+
+```java
+@Slf4j
+public class MyInterceptor implements interceptor {
+
+    private TargetMethod targetMethod;
+    private DefaultAspect aspect;
+
+    public MyInterceptor(TargetMethod targetMethod, DefaultAspect aspect) {
+        this.targetMethod = targetMethod;
+        this.aspect = aspect;
+    }
+
+    @Override
+    public Object invoke(InterceptorChain chain) throws Throwable {
+        Object returnValue = null;
+        try {
+            aspect.before(targetMethod.getTargetObject().getClass(), targetMethod.getMethod(), targetMethod.getArgs());
+            returnValue = chain.proceed();
+            aspect.afterReturning(targetMethod.getTargetObject().getClass(), targetMethod.getMethod(), targetMethod.getArgs(), returnValue);
+        } catch (Throwable throwable) {
+            aspect.afterThrowing(targetMethod.getTargetObject().getClass(), targetMethod.getMethod(), targetMethod.getArgs(), throwable);
+            throw throwable;
+        }
+        return returnValue;
+    }
+}
+```
+
+```java
+public class AspectInterceptor implements MethodInterceptor {
+    //被代理的类
+    private Class<?> targetClass;
+
+    //排好序的列表
+    @Getter
+    List<AspectInfo> sortedAspectInfoList;
+
+    public AspectInterceptor(Class<?> targetClass, List<AspectInfo> aspectInfoList) {
+        this.targetClass = targetClass;
+        this.sortedAspectInfoList = sortAspectInfoList(aspectInfoList);
+    }
+
+    /**
+     * 按照order的值进行升序排序，确保order值小的aspect先被织入
+     *
+     * @param aspectInfoList aspectInfo列表
+     * @return 排好序后的aspectInfo列表
+     */
+    private List<AspectInfo> sortAspectInfoList(List<AspectInfo> aspectInfoList) {
+        Collections.sort(aspectInfoList, Comparator.comparingInt(AspectInfo::getOrderIndex));
+        return aspectInfoList;
+    }
+
+    @Override
+    public Object intercept(Object o, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
+        collectAccurateMatchedAspectList(method);
+        if (ValidationUtil.isEmpty(sortedAspectInfoList)) {
+            //这里要注意，如果没有匹配的切面，那么还是需要调用原方法
+            return methodProxy.invokeSuper(o, args);
+        }
+        TargetMethod targetMethod = new TargetMethod(o, method, args);
+        List<MyInterceptor> interceptorList = new ArrayList<>();
+        for (AspectInfo aspectInfo : this.sortedAspectInfoList) {
+            interceptorList.add(new MyInterceptor(targetMethod, aspectInfo.getAspectObject()));
+        }
+        InterceptorChain chain = new InterceptorChain(interceptorList, o, methodProxy, args);
+        return chain.proceed();
+    }
+
+    private void collectAccurateMatchedAspectList(Method method) {
+        if (ValidationUtil.isEmpty(sortedAspectInfoList)) return;
+        Iterator<AspectInfo> it = sortedAspectInfoList.iterator();
+        while (it.hasNext()) {
+            AspectInfo aspectInfo = it.next();
+            if (!aspectInfo.getPointcutLocator().accurateMatches(method)) {
+                it.remove();
+            }
+        }
+    }
+}
+```
+
+#### 遇到的一些问题
+
++ debug模式下显示List的数量为0，且没有经过拦截器。但是run模式下是正常的。
++ 出现死循环，因为错误使用method.invoke(代理对象)。应该使用method.invoke(被代理对象)或者methodProxy.invokeSuper(代理对象)。methodProxy.invoke(被代理对象)
 
 ## AspectJ框架
 
