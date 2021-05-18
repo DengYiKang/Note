@@ -1263,7 +1263,16 @@ public class AspectInterceptor implements MethodInterceptor {
 #### 遇到的一些问题
 
 + debug模式下显示List的数量为0，且没有经过拦截器。但是run模式下是正常的。
+
 + 出现死循环，因为错误使用method.invoke(代理对象)。应该使用method.invoke(被代理对象)或者methodProxy.invokeSuper(代理对象)。methodProxy.invoke(被代理对象)
+
+  > 例如对于JDK动态代理，如果在拦截器中调用了method.invoke(proxy, args)，那么就会发生死循环。
+  >
+  > 因为调用了代理对象proxy的方法，因此会经过拦截器，拦截器中又调用代理对象proxy的方法，从而产生循环。
+  >
+  > 因此在拦截器中应该直接调用被代理对象的方法，即method.invoke(targetObject, args)。
+  >
+  > 对于CGLIB动态代理，有methodProxy参数，可以调用methodProxy.invokeSuper(proxy, args)，也可以调用methodProxy.invoke(targetObject, args)。
 
 ## AspectJ框架
 

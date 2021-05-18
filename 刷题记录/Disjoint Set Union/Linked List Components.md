@@ -55,3 +55,24 @@ class Solution {
 }
 ```
 
+### 解决方案：根据union的次数来计算块
+
+```java
+class Solution {
+    public int numComponents(ListNode head, int[] nums) {
+        HashSet<Integer> set=new HashSet<>();
+        for(int i=0; i<nums.length; i++){
+            set.add(nums[i]);
+        }
+        int ans=set.size();
+        while(head!=null&&head.next!=null){
+            if(set.contains(head.val)&&set.contains(head.next.val)){
+                ans--;
+            }
+            head=head.next;
+        }
+        return ans;
+    }
+}
+```
+
