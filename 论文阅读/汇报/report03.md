@@ -1,4 +1,4 @@
-# week03
+# report03
 
 ## An Efficient Framework for Clustered Federated Learning
 
@@ -17,3 +17,7 @@
 大致的思想是：首先确定簇的个数k，中心服务器生成k个初始权重$\theta_j^{(0)}$，将这k个发给所有的client。client进行对这些权重的挑选，选择一个能使本地的loss function最低的权重$\theta_i^{(0)}$，那么这个client就属于第$i$个簇，这一轮的global update就只与第$i$个簇的所有client进行FL。每一轮的clustering都可能不一样。
 
 <img src="../../pic/289.png" style="zoom:80%;" />
+
+## 长尾分布
+
+训练集是imbalance，测试机是balance。
