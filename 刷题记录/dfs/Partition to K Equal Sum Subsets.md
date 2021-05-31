@@ -38,3 +38,48 @@ class Solution {
 }
 ```
 
+更好理解的版本：
+
+dfs(pos)表示从pos开始匹配，一定要将pos匹配进去。
+
+有两种情况，一是当前组已经匹配完了，需要重新开始匹配，那么对第一个非已匹配状态进行dfs，如果失败，那么肯定就不存在解。
+
+而在当前组匹配的过程中，是属于可回溯的，因此对于下个位置如果匹配失败，可以换个位置继续匹配，知道成功为止。
+
+```java
+class Solution {
+    public boolean canPartitionKSubsets(int[] nums, int k) {
+        int sum=0;
+        for(int x:nums){
+            sum+=x;
+        }
+        if(sum%k!=0) return false;
+        return dfs(0, nums, 0, sum/k, new boolean[nums.length]);
+    }
+    boolean dfs(int pos, int[] nums, int sum, int target, boolean[] vis){
+        sum+=nums[pos];
+        if(sum>target) return false;
+        vis[pos]=true;
+        if(sum==target){
+            boolean ans=true;
+            for(int i=0; i<nums.length; i++){
+                if(vis[i]) continue;
+                ans=dfs(i, nums, 0, target, vis);
+                break;
+            }
+            vis[pos]=false;
+            return ans;
+        }
+        for(int i=pos+1; i<nums.length; i++){
+            if(vis[i]) continue;
+            if(dfs(i, nums, sum, target, vis)){
+                vis[i]=false;
+                return true;
+            }
+        }
+        vis[pos]=false;
+        return false;
+    }
+}
+```
+
