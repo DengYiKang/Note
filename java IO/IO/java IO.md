@@ -426,7 +426,7 @@ InputStreamReader(InputStream in, String charsetName);//创建一个指定字符
 
 #### OutputStreamWriter
 
-转换流`java.io.OutputStreamWriter` ，是Writer的子类，使用指定的字符集将字符编码为字节。它的字符集可以由名称指定，也可以接受平台的默认字符集。
+转换流`java.io.OutputStreamWriter` ，是Writer的子类，使用指定的字符集将字节编码为字符。它的字符集可以由名称指定，也可以接受平台的默认字符集。
 
 ```java
 OutputStreamWriter(OutputStream in);//创建一个使用默认字符集的字符流。

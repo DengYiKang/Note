@@ -97,3 +97,45 @@ class Solution {
 }
 ```
 
+### 补充
+
+上述需要建树，占用大量的空间，可以考虑用dp的方式：
+
+```java
+class Solution {
+    public List<Integer> diffWaysToCompute(String expression) {
+        String[] nums=expression.split("\\*|-|\\+");
+        String[] tmp=expression.split("\\d+");
+        if(tmp.length<2){
+            List<Integer> ans=new ArrayList<>();
+            ans.add(Integer.valueOf(nums[0]));
+            return ans;
+        }
+        String[] ops=Arrays.copyOfRange(tmp, 1, tmp.length);
+        return cal(nums, ops, 0, nums.length+ops.length-1);
+    }
+    List<Integer> cal(String[] nums, String[] ops, int l, int r){
+        List<Integer> ans=new ArrayList<>();
+        if(l==r){
+            ans.add(Integer.valueOf(nums[l/2]));
+            return ans;
+        } 
+        for(int i=l+1; i<r; i+=2){
+            List<Integer> left_nums=cal(nums, ops, l, i-1);
+            List<Integer> right_nums=cal(nums, ops, i+1, r);
+            for(int left:left_nums){
+                for(int right:right_nums){
+                    if(ops[i/2].equals("*")) 
+                        ans.add(left*right);
+                    else if(ops[i/2].equals("+"))
+                        ans.add(left+right);
+                    else 
+                        ans.add(left-right);
+                }
+            }
+        }
+        return ans;
+    }
+}
+```
+
