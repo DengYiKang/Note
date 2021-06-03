@@ -83,6 +83,11 @@ class Solution {
 
 #### 方法二：统计
 
+只需要判断是否满足下列条件：
+
++ 所给的棋盘上没有两个同时赢的人
++ 第一个人走的步数=第二个走的（或+1）
+
 ```java
 class Solution {
     public boolean validTicTacToe(String[] board) {

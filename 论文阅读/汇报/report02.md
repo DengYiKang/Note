@@ -179,7 +179,7 @@ Advances in Neural Information Processing Systems, pp. 5915–5926, 2019.
 
 ## Personalized Federated Learning with Moreau Envelopes
 
-期刊：arXiv
+期刊：NeurIPS
 
 年份：2020
 
