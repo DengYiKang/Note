@@ -12,50 +12,28 @@
 
 ```java
 class Solution {
-    class Node{
-        boolean l=false;
-        boolean r=false;
-        Node(){}
-        Node(boolean l, boolean r){
-            this.l=l;
-            this.r=r;
-        }
-    }
     public boolean isValidSerialization(String preorder) {
-        if(preorder==null||preorder.length()==0) return false;
+        if(preorder==null||preorder.length()==0) return true;
+        Stack<boolean[]> stack=new Stack<>();
         String[] splits=preorder.split(",");
-        int cnt=1;
-        Stack<Node> stack=new Stack<>();
-        if(splits[0].equals("#")) stack.push(new Node(true, true));
-        else stack.push(new Node());
-        while(!stack.isEmpty()){
-            Node cur=stack.peek();
-            //这里对结点同一处理，保证在栈非空的情况下当前结点有子树空位可用
-            while(!stack.isEmpty()&&cur.l&&cur.r){
-                stack.pop();
-                if(!stack.isEmpty()) cur=stack.peek();
+        if(!splits[0].equals("#")) stack.push(new boolean[]{false, false});
+        int tail=1;
+        while(!stack.isEmpty()&&tail<splits.length){
+            boolean[] parent=stack.pop();
+            if(parent[0]==false) parent[0]=true;
+            else if(parent[1]==false) parent[1]=true;
+            else{
+                continue;
             }
-            //栈中结点不够用
-            if(cur.l&&cur.r) break;
-            //输入的结点不够用
-            if(cnt==splits.length) return false;
-            if(!splits[cnt].equals("#")){
-                if(!cur.l){
-                    cur.l=true;
-                    cnt++;
-                    stack.push(new Node());
-                }else if(!cur.r){
-                    cur.r=true;
-                    cnt++;
-                    stack.push(new Node());
-                }
-            }else{
-                if(!cur.l) cur.l=true;
-                else if(!cur.r) cur.r=true;
-                cnt++;
+            stack.push(parent);
+            if(!splits[tail++].equals("#")){
+                stack.push(new boolean[]{false, false});
             }
         }
-        if(cnt!=splits.length) return false;
+        while(!stack.isEmpty()&&stack.peek()[0]==true&&stack.peek()[1]==true){
+            stack.pop();
+        }
+        if(!stack.isEmpty()||tail<splits.length) return false;
         return true;
     }
 }
