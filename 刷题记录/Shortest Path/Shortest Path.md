@@ -15,7 +15,9 @@ void floyd(){
 
 ```java
 static final int INF=0x3f3f3f3f;
+//dist[i]表示i到起点s的距离
 boolean[] vis, dist;
+//mp[i][j]表示i到j的距离
 int[][] mp;
 int n;
 int[] w, num, weight;
@@ -27,6 +29,7 @@ num[i]:the amount of the shortest paths to i
 void init(){
     //init whith space...
     Arrays.fill(mp, INF);
+    //根据输入赋值mp
     Arrays.fill(dist, INF);
     Arrays.fill(vis, false);
 }
@@ -45,7 +48,7 @@ void dijkstra(int s){
         if(u==-1) return;
         vis[u]=true;
         for(int j=0; j<n; j++){
-            if(vis[j]||dist[u][j]==INF) continue;
+            if(vis[j]||mp[u][j]==INF) continue;
             if(dist[u]+mp[u][j]<dist[j]){
                 dist[j]=dist[u]+mp[u][j];
                 num[j]=num[u];
