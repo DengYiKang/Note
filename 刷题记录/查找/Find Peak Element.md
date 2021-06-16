@@ -6,21 +6,34 @@
 
 ### 解决方案：折半查找，$O(logn)$ 
 
-在搜索的中点处取一小段($A[mid],A[mid+1]$)查看是上坡还是下坡，若是上坡则峰顶在右侧，若是下坡则峰顶在左侧。
+套用查找连续相同值的第一个。
+
+那么需要找到一个评判标准，这个评判标准使得划分不重复，且答案在评判标准之内。
+
+那么可以这样定义isRight，如果当前数>下一个数，那么就是isRight，对于峰顶显然是符合的。
 
 ```java
 class Solution {
     public int findPeakElement(int[] nums) {
-        int lo=0, hi=nums.length-1;
-        while(lo<hi){
-            int mid=(lo+hi)/2;
-            int mid2=mid+1;
-            //注意lo与hi的赋值
-            if(nums[mid]<nums[mid2]) lo=mid2;
-            else hi=mid;
+        return search(nums, 0, nums.length-1);
+    }
+    int search(int[] nums, int l, int r){
+        while(l<=r){
+            int mid=(l+r)>>1;
+            if(isRight(nums, mid)){
+                r=mid-1;
+            }else{
+                l=mid+1;
+            }
         }
-        return lo;
+        return l;
+    }
+    boolean isRight(int[] nums, int pos){
+        if(pos==nums.length-1) return true;
+        return nums[pos]>nums[pos+1];
     }
 }
 ```
+
+
 

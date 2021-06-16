@@ -38,3 +38,35 @@ class Solution {
 }
 ```
 
+从上面的分析中，可以看出，可以利用两个不等关系来判断当前pos是左侧的false还是右侧的false还是中间的true。
+
+因为返回的是最大值h=len-pos，因此需要找到连续true的最左侧的true，使得pos最小。
+
+那么只需要确定评判函数，使得能正确识别好出中间的true和右侧的false，直接套用连续的第一个二分查找模板即可：
+
+```java
+class Solution {
+    public int hIndex(int[] c) {
+        int l=0, r=c.length-1;
+        while(l<=r){
+            int mid=(l+r)>>1;
+            if(eq1(c, mid)){
+                r=mid-1;
+            }else{
+                l=mid+1;
+            }
+        }
+        return c.length-l;
+    }
+    boolean eq1(int[] c, int pos){
+        return c[pos]>=c.length-pos;
+    }
+    //这个不等式没有用到
+    boolean eq2(int[] c, int pos){
+        if(pos==0) return true;
+        return c[pos-1]<=c.length-pos;
+    }
+    
+}
+```
+

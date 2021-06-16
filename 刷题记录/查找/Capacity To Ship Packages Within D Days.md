@@ -2,7 +2,7 @@
 
 ### 问题
 
-需要按顺序运输一堆货物，第i个货物的重为weights[i]，一天最多运capacity重量。问用D天运输（这D天必须用到，不多不少），现在给定weights与D，求capacity的最小值。
+需要按顺序运输一堆货物，第i个货物的重为weights[i]，一天最多运capacity重量。问用D天运输（这D天必须用到，不多不少），现在给定weights与D，求capacity的最小值。注意这些必须按照规定的顺序运（例如运weight[10]之前必须运weight[1]）。
 
 ### 解决方案：二分搜索，时间复杂度$O(nlogm)$
 
