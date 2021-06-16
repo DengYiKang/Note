@@ -58,3 +58,4 @@ table3中的individual trainning是使所有的node不参与联合训练，独�
 
 + 提出树形结构，分担server的压力，并且有利于为各部分制定训练频数。
 + 提出重叠node的概念，各个cluster之间存在共享的node，共享数据集。
+
