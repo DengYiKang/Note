@@ -6,38 +6,34 @@
 
 ### 解决方案：滑动窗口，时间复杂度$O(n)$
 
-要注意梯度不能为0。
-
-有两种思路，一种重新从第二个点开始搜索，需要维护一个变量表示是否为开始，因为当前梯度值的正负无法判断；第二种先搜索合法的第二个点，将当前梯度值初始化后从第三个点开始搜索。这里使用的是第二种。
-
 ```java
 class Solution {
-        public int maxTurbulenceSize(int[] arr) {
-                int lo=0, ans=1;
-                boolean state=false;
-                while(lo+1<arr.length&&arr[lo]==arr[lo+1]) lo++;
-                if(lo+1>=arr.length) return ans;
-                else state=arr[lo+1]-arr[lo]>0?true:false;
-                for(int i=lo+2; i<arr.length; i++){
-                        boolean new_state=arr[i]-arr[i-1]>0?true:false;
-                        if(arr[i]==arr[i-1]){
-                                ans=Math.max(ans, i-lo);
-                                while(i<arr.length&&arr[i]==arr[i-1]) i++;
-                                lo=i-1;
-                                //这里要注意边界
-                                if(i<arr.length) state=arr[i]-arr[i-1]>0?true:false;
-                                else return Math.max(ans, i-lo);
-                        }else if(new_state==state){
-                                ans=Math.max(ans, i-lo);
-                                lo=i-1;
-                                state=new_state;
-                        }else{
-                                state=new_state;
-                        }
+    public int maxTurbulenceSize(int[] arr) {
+        int status=-1;
+        int l=0, r=1, ans=1;
+        while(r<arr.length){
+            if(status==-1){
+                if(arr[r]==arr[r-1]) l=r;
+                else status=arr[r]>arr[r-1]?r%2:1-(r%2);
+            }else{
+                if(status==r%2&&arr[r]<=arr[r-1]
+                  || status!=r%2&&arr[r]>=arr[r-1]){
+                    ans=Math.max(ans, r-l);
+                    if(arr[r-1]==arr[r]){
+                        l=r;
+                        status=-1;
+                    }else{
+                        l=r-1;
+                        status=arr[r]>arr[r-1]?r%2:1-(r%2);    
+                    }
                 }
-                ans=Math.max(ans, arr.length-lo);
-                return ans;
+            }    
+            r++;
         }
+        return Math.max(ans, r-l);
+    }
 }
 ```
+
+
 

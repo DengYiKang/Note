@@ -33,3 +33,35 @@ public class Solution {
 }
 ```
 
+另一种：
+
+```java
+class Solution {
+    public int triangleNumber(int[] nums) {
+        Arrays.sort(nums);
+        int ans=0;
+        for(int i=0; i<nums.length; i++){
+            for(int j=i+1; j<nums.length; j++){
+                ans+=search(nums, j+1, nums.length-1, nums[i]+nums[j]);
+            }
+        }
+        return ans;
+    }
+    //x=a+b，x是不能取的，这里找的是连续x的第一个x的位置
+    //如果不存在x，那么l就是比x大的第一个位置
+    //因此<x的个数在两种情况下都是l-origin_l
+    int search(int[] a, int l, int r, int x){
+        int origin_l=l, origin_r=r;
+        while(l<=r){
+            int mid=(l+r)>>1;
+            if(a[mid]>=x){
+                r=mid-1;
+            }else{
+                l=mid+1;
+            }
+        }
+        return l-origin_l;
+    }
+}
+```
+
