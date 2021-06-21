@@ -223,7 +223,7 @@ set autocommit=0;
   + 可重复读：repeatable read
   + 串行化：serializable
 
-+ 读未提交：
++ 读未提交（脏读）：
 
   + A未提交的数据，B能读取到
   + 导致脏读
