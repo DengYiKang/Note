@@ -165,6 +165,14 @@ private void setHead(Node node) {
 }
 ```
 
+一些重要的状态：
+
+<img src="../../../pic/440.png" style="zoom:80%;" />
+
+<img src="../../../pic/441.png" style="zoom:80%;" />
+
+
+
 ### 独占锁的获取
 
 ```java
@@ -532,7 +540,7 @@ public final boolean releaseShared(int arg) {
 
 **同步队列**：
 
-同步队列是一个双向链表，`nextWaiter`成员最多在共享模式下用来标识是否为共享锁结点。head是一个dummy node，其thread成员为null，第一个等待线程是head的后继。
+同步队列是一个双向链表，`nextWaiter`成员在独占模式、共享模式下用来标识是否为共享锁结点、独占节点。head是一个dummy node，其thread成员为null，第一个等待线程是head的后继。
 
 **条件队列**：
 
@@ -545,7 +553,7 @@ public class ConditionObject implements Condition, java.io.Serializable {
 }
 ```
 
-条件队列是一个单向链表，使用`nextwaiter`作为链接（在同步队列中，`nextwaiter`最多在共享模式下用来标识是否为共享锁结点）。不存在dummy node。如果结点的状态为`CONDITION`，说明线程还在等待在这个Condition对象上；如果不是`CONDITION`的，说明这个结点已经前往同步队列。
+条件队列是一个单向链表，使用`nextwaiter`作为链接（在同步队列中，`nextwaiter`用来标识是否为独占节点、共享锁结点）。不存在dummy node。如果结点的状态为`CONDITION`，说明线程还在等待在这个Condition对象上；如果不是`CONDITION`的，说明这个结点已经前往同步队列。
 
 #### 两者的关系
 

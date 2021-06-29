@@ -58,7 +58,7 @@ LinkedBlockingQueue的底层实现基于单链表：
 
 为了保证`head`的正确性，只有竞争到`takeLock`的出队线程才能执行出队动作。这样就只有一个线程在修改`head`。
 
-![在这里插入图片描述](/home/yikang/Documents/gitFiles/Note/pic/29)
+![在这里插入图片描述](../../../pic/29)
 
 当出队线程从`notEmpty.await()`处恢复执行时，已经又重新获得了takeLock，然后出队线程即将执行出队动作，别的线程也不可能和它竞争出队了。跟`ArrayBlockingQueue`的流程也一样。
 

@@ -121,8 +121,6 @@ bean都是由BeanFactory的实现类来管理的。
 
 ### 简单容器
 
-
-
 <img src="../../pic/206.png" style="zoom:80%;" />
 
 #### ListableBeanFactory
@@ -369,9 +367,9 @@ spring容器会自动调用这些setter方法。
 
 由名字可以看出他们的作用：
 
-+ ContextStartedEvent：容器启动后触发的事件
-+ ContextStoppedEvent：容器停止后触发的事件
-+ ContextClosedEvent：容器关闭后触发的事件
++ ContextStartedEvent：容器启动后触发的事件，使用ConfigurableApplicationContext接口上的start（）方法时发布
++ ContextStoppedEvent：容器停止后触发的事件，使用ConfigurableApplicationContext接口上的stop（）方法时发布
++ ContextClosedEvent：容器关闭后触发的事件，使用ConfigurableApplicationContext接口上的close（）方法时发布
 + ContextRefreshedEvent：容器初始化或刷新后触发的事件
 
 查看ApplicationEvent的构造器：
@@ -561,6 +559,12 @@ Spring为什么定义了Multicaster还要定义Publisher呢？设计者只想让
 >二级缓存用于解决循环依赖的问题，但是如果需要AOP代理，那么需要三级缓存来处理，三级缓存的工厂可以进行AOP代理，返回代理对象。
 >
 >A，B循环依赖，先初始化A，暴露一个半成品A，再去初始化依赖的B，初始化B时如果发现B依赖A，也就是循环依赖，就注入半成品A，之后初始化完毕B，再回到A的初始化过程时就解决了循环依赖，在这里只需要一个Map能缓存半成品A就行了，也就是二级缓存就够了，但是这个二级缓存存的是Bean对象，如果这个对象存在代理，那应该注入的是代理，而不是Bean，此时二级缓存无法及缓存Bean，又缓存代理，因此三级缓存做到了缓存工厂 ，也就是生成代理。
+>
+>```java
+>addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+>```
+>
+>getEarlyBeanReference方法将会遍历所有的bean级别的后置处理器，找到是SmartInstantiationAwareBeanPostProcessor实例的后置处理器，==注意，AbstractAutoProxyCreator继承了这个后置处理器接口，该该方法返回一个proxy，因此addSingletonFactory将proxy放到了三级缓存中！==
 
 ## Spring是否支持所有循环依赖的情况
 
