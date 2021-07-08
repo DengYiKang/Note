@@ -35,7 +35,7 @@ void init(){
 }
 void dijkstra(int s){
     dist[s]=0;
-    w[s]=weight[maxn];
+    w[s]=weight[s];
     num[s]=1;
     for(int i=0; i<n; i++){
         int Min=INF, u=-1;
