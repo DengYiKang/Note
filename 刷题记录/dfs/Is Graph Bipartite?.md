@@ -6,29 +6,27 @@
 
 ### 解决方案：dfs，时间复杂度$O(n)$
 
-dfs进行染色，染色数组`int[] type`即可以表示当前的染色状态又可以表示是否被dfs过。
+dfs进行染色，染色数组`int[] color`即可以表示当前的染色状态又可以表示是否被dfs过。
 
 ```java
 class Solution {
     public boolean isBipartite(int[][] graph) {
-        int N=graph.length;
-        int[] type=new int[N];
-        Arrays.fill(type, -1);
-        for(int i=0; i<N; i++){
-            if(type[i]==-1) type[i]=0;
-            else if(!dfs(i, graph, type)) return false;
+        if(graph==null||graph.length==0) return false;
+        int n=graph.length;
+        int[] colors=new int[n];
+        for(int i=0; i<graph.length; i++){
+            if(colors[i]==0&&!dfs(i, graph, colors, 1)) return false;
         }
         return true;
     }
-    public boolean dfs(int pos, int[][] graph, int[] type){
-        int t=type[pos];
+    boolean dfs(int pos, int[][] graph, int[] colors, int color){
+        colors[pos]=color;
+        int next_color=-color;
         for(int i=0; i<graph[pos].length; i++){
             int next_node=graph[pos][i];
-            if(type[next_node]!=-1){
-                if(type[next_node]+t!=1) return false;
-            }else{
-                type[next_node]=1-t;
-                if(!dfs(next_node, graph, type)) return false;
+            if(colors[next_node]==color) return false;
+            if(colors[next_node]==0&&!dfs(next_node, graph, colors, next_color)){
+                return false;
             }
         }
         return true;

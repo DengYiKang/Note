@@ -44,3 +44,13 @@ class Solution {
 }
 ```
 
+找中间值这样比较好，low.next开始的长度最多为n/2。
+
+```java
+    while(fast.next!=null){
+        fast=fast.next;
+        if(fast.next!=null) fast=fast.next;
+        else break;
+        low=low.next;
+    }
+```
