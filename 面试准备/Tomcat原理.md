@@ -179,4 +179,3 @@ Container处理请求是使用Pipeline-Valve管道来处理的。Pipeline-Valve�
 + 包裹住Servlet实例
 + 负责管理Servlet实例的生命周期
 
-## 
